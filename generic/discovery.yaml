@@ -1,0 +1,85 @@
+## Framing/CRC discovery for a COMPLETELY UNKNOWN DLE-framed bus.
+##
+## Use this first when you do not even know the dle/stx/etx delimiter bytes, the escape
+## scheme, or the CRC. With discovery: enabled the hub does NO framing, validation, or
+## transmission -- it passively captures raw bytes, segments them into frames by idle gap,
+## and every `interval` logs:
+##   - candidate dle / stx / etx delimiter bytes (the most common burst start/end byte pairs)
+##   - the escape scheme (double = DLE DLE, or escape_byte + marker)
+##   - any CRC scheme that matches consistently across captured frames
+##   - a ready-to-paste framing: block
+##
+## Watch the logs at INFO level. Once the report stabilizes, copy the suggested framing/escape
+## values (and CRC, if one matched) into generic/sniffer.yaml or generic/skeleton.yaml and
+## continue reverse-engineering the payloads with on_frame: handlers.
+##
+## Discovery tests the DLE-framing hypothesis. If the report never converges (the start and
+## end delimiter bytes disagree, or no CRC matches), the bus is probably not DLE-framed --
+## that is useful information too.
+
+esphome:
+  name: rs485-discovery
+  friendly_name: RS485 Discovery
+
+# Required -- fill in your board identifier.
+# See https://esphome.io/components/esp32 for the full list.
+esp32:
+  board: esp32-s3-devkitc-1    # replace with your variant
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO                  # discovery reports log at INFO
+
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Remove this block once rs485_frame is included in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
+# Set baud/parity/stop bits to match your bus. If you do not know the baud rate, let discovery
+# find it: uncomment discovery.baud_sweep below and the value here is just the starting point.
+# Parity and stop bits cannot be detected passively (a receiver decodes fine even when they
+# disagree with the sender); they only matter when you later transmit. Start with NONE / 1 and,
+# if commands are ignored, try EVEN then ODD parity and stop_bits: 2.
+# Set flow_control_pin to your adapter's DE/RE pin: on most half-duplex RS485 transceivers the
+# receiver is disabled unless DE/RE is driven, so without it you will capture nothing. Discovery
+# never transmits, so ESPHome simply holds this pin in the receive state.
+uart:
+  id: bus_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  flow_control_pin: GPIO21      # DE/RE direction pin; required to receive on most RS485 boards
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 2
+  rx_buffer_size: 512
+
+rs485_frame:
+  id: bus
+  uart_id: bus_uart
+  # No framing.escape and no crc: -- those are exactly what discovery is here to find.
+  discovery:
+    interval: 30s
+    # Idle time that ends a frame (~3 character times). 5ms suits 9600-19200 baud. Raise it if
+    # the report shows frames being split; lower it if separate frames are merging.
+    idle_gap: 5ms
+    # Minimum percent of bursts that must agree on the same start/end delimiter pair before the
+    # ready-to-paste config is printed. Defaults to 80. Lower it only if your bus is genuinely
+    # noisy and the framing line shows a low confidence you have confirmed is correct.
+    # min_framing_confidence: 80
+    # Don't know the baud rate? Uncomment baud_sweep to let discovery find it: it tries each baud
+    # (crossed with data_bits_sweep, default [8]) for `dwell` and locks onto the best. Requires
+    # ESP-IDF or ESP8266 (runtime UART reconfiguration). Parity/stop bits are not swept.
+    # baud_sweep: [9600, 19200, 38400, 57600, 115200]
+    # data_bits_sweep: [8]
+    # dwell: 10s

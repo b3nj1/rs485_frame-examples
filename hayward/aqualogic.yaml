@@ -1,0 +1,516 @@
+esphome:
+  name: aqualogic
+  friendly_name: AquaLogic
+
+# Required -- fill in your board identifier.
+# See https://esphome.io/components/esp32 for the full list.
+# ESP-IDF is recommended: it enables hardware RS485 half-duplex mode on the
+# UART peripheral, which drives the DE/RE direction pin precisely at the
+# shift-register level without software guard times. Arduino framework users
+# must use an auto-DE transceiver chip (e.g. MAX13487, MAX22025) instead.
+esp32:
+  board: esp32-s3-devkitc-1    # replace with your variant
+  framework:
+    type: esp-idf
+
+logger:
+  # level: INFO  # DEBUG | INFO | WARN | ERROR | NONE
+
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Temporary -- tracks the PR branch. Update the ref to @dev once merged;
+# remove this block entirely once included in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
+globals:
+  # Timestamp (millis) of the last heater-mode proof seen on the display.
+  # Used to revert heater_auto to false after 60 s with no confirming screen.
+  - id: g_heater_proof_ms
+    type: uint32_t
+    initial_value: '0'
+
+uart:
+  id: pool_uart
+  # If you receive no data, try swapping tx_pin and rx_pin. Some adapters
+  # label DI/RO from the adapter's perspective, opposite of the device's.
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 2
+  rx_buffer_size: 512
+  # Set the flow_control_pin if your RS485 adapter has a DE/RE direction
+  # pin (common on half-duplex adapters with a single data pair). With ESP-IDF
+  # this enables hardware half-duplex mode: the UART peripheral drives the pin
+  # automatically with shift-register-level timing. Adapters that auto-manage
+  # direction or have separate TX/RX lines do not need this.
+  flow_control_pin: GPIO21
+
+rs485_frame:
+  id: pool
+  uart_id: pool_uart
+
+  # ---------------------------------------------------------------------------
+  # Hayward AquaLogic WIRELESS remote emulation (verified on AquaLogic/ProLogic).
+  #
+  # Everything the bus needs is declared explicitly here:
+  #   - UART 19200 8N2 (set in the uart: block above)
+  #   - sum16 CRC, header-inclusive on TX
+  #   - TX gated on the 0x01 0x01 keep-alive frame
+  #   - command_format that wraps each button command with the wireless-remote
+  #     preamble [0x00, 0x83, 0x01] + 4-byte command repeated twice + [0x00]
+  #
+  # The wireless frame type (0x0083) never collides with the physical main
+  # panel's own keypress traffic, which is why it is the recommended choice.
+  #
+  # Other AquaLogic transmit roles (also verified) are selected purely by the
+  # command_format.preamble byte sequence:
+  #   - WIRED REMOTE (frame type 0x0003): preamble [0x00, 0x03, 0x01]
+  #   - WIRED LOCAL / main panel (frame type 0x0002, collision risk):
+  #     preamble [0x00, 0x02, 0x01]
+  #   - a different wired unit-address (e.g. unit 3 = 0x04): preamble [0x00, 0x04]
+  #     Note: 0x04 and higher only accept menu / navigation buttons; AUX /
+  #     Lights / Filter toggles are silently ignored at those addresses.
+  # Swap the preamble below to change roles; the rest of this file is identical.
+  # ---------------------------------------------------------------------------
+  framing:
+    escape:
+      mode: escape_byte   # Hayward stuffs a literal DLE as DLE + the byte below
+      byte: 0x00
+  crc:
+    type: sum16
+    tx_variant: header_inclusive
+
+  tx:
+    gate:
+      mode: frame_trigger
+      frame_type: [0x01, 0x01]   # transmit right after the keep-alive frame
+    queue_policy: replace_latest
+    max_queue_size: 1
+
+  command_format:
+    preamble: [0x00, 0x83, 0x01]   # 0x83 => wireless remote (see roles above)
+    command_size: 4
+    command_endian: big
+    command_repeat: 2
+    postamble: [0x00]
+
+  dump_frames: false
+
+  on_frame:
+    # ---------------------------------------------------------------------------
+    # LED status frame (0x01 0x02)
+    #
+    # Payload bytes 2-5: 32-bit little-endian mask of solid-lit LEDs.
+    # Payload bytes 6-9: 32-bit little-endian mask of blinking LEDs.
+    # Confirmed bit positions (solid mask):
+    #   bit 0 = Heater active   bit 3 = Pool Mode    bit 5 = Filter
+    #   bit 2 = Check System    bit 4 = Spa Mode     bit 6 = Lights
+    #   bit 7 = AUX 1           bit 8 = AUX 2
+    #
+    # Each call to publish_state is immediate -- no polling latency.
+    # Add or remove id() calls to match the AUX loads you have wired.
+    # ---------------------------------------------------------------------------
+    - frame_type: [0x01, 0x02]
+      then:
+        - lambda: |-
+            if (payload.size() < 6) return;
+            uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
+                            (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
+            id(led_heater).publish_state(bool(mask & (1UL << 0)));
+            id(led_check).publish_state(bool(mask & (1UL << 2)));
+            id(led_pool_mode).publish_state(bool(mask & (1UL << 3)));
+            id(led_spa_mode).publish_state(bool(mask & (1UL << 4)));
+            id(led_filter).publish_state(bool(mask & (1UL << 5)));
+            id(led_lights).publish_state(bool(mask & (1UL << 6)));
+            id(led_aux1).publish_state(bool(mask & (1UL << 7)));
+            id(led_aux2).publish_state(bool(mask & (1UL << 8)));
+
+    # ---------------------------------------------------------------------------
+    # Display frame (0x01 0x03)
+    #
+    # The controller cycles through multiple display screens. Each frame shows
+    # one screen. The lambda runs once per frame and updates whichever sensors
+    # match the current screen; all others hold their last value.
+    #
+    # Encoding: bit 7 of each byte = blink flag; '_' = degree symbol (UTF-8).
+    # Stack buffers are used throughout -- no heap allocation during decode.
+    # Text sensors deduplicate internally so repeated equal values are not
+    # forwarded to Home Assistant. Numeric sensors use throttle filters.
+    # (0x04 0x0A) has display updates as well after button presses, but this
+    # include non-printing characters, so is ignored.
+    # ---------------------------------------------------------------------------
+    - frame_type: [0x01, 0x03]
+      then:
+        - lambda: |-
+            // BUF_LEN sized to cover Hayward Pro Logic's widest displays (~40 chars per
+            // line) plus UTF-8 degree-symbol expansion (each '_' becomes 2 bytes).
+            // static: allocated once in .bss at program start -- no per-call stack
+            // pressure and no heap, matching the hub's setup-time buffer discipline.
+            const size_t BUF_LEN = 128;
+            static char text[BUF_LEN];
+            static char blink[BUF_LEN];
+            // Encoding: strip bit 7 (blink flag); map '_' to UTF-8 degree symbol.
+            uint8_t tlen = 0;
+            // Blinking text: extract only bytes that had bit 7 set.
+            uint8_t blen = 0;
+            bool isblink = false;
+            for (size_t i = 3; i < payload.size() && tlen < (BUF_LEN-2); i++) {
+              uint8_t b = payload[i];
+              isblink = bool(b > 0x7F);
+              b &= 0x7f;
+              if (b < 0x20 || b > 0x7E) continue;
+              if (b == '_') {
+                if (tlen + 2 <= (BUF_LEN-2)) {
+                 text[tlen++] = '\xC2'; text[tlen++] = '\xB0';
+                 if (isblink) { blink[blen++] = '\xC2'; blink[blen++] = '\xB0'; }
+                }
+              } else {
+                text[tlen++] = char(b);
+                if (isblink) blink[blen++] = char(b);
+              }
+            }
+            while (tlen > 0 && text[tlen - 1] == ' ') tlen--;
+            text[tlen] = '\0';
+
+            // Publish full display text. One std::string allocation per frame at the
+            // publish_state call; the text sensor deduplicates unchanged values.
+            id(display_text).publish_state(std::string(text, tlen));
+
+            while (blen > 0 && blink[blen - 1] == ' ') blen--;
+            blink[blen] = '\0';
+            id(display_blink).publish_state(std::string(blink, blen));
+
+
+            // Temperature: only extract on the "Temp" screen to prevent false matches
+            // when "Pool" or "Air" appear in a different context on another screen.
+            if (strstr(text, "Temp")) {
+
+              const char *p = strstr(text, "Pool Temp");
+              if (p) {
+                p += 9; while (*p == ' ') p++;
+                float v = 0; bool ok = false;
+                while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                if (ok) id(pool_temp).publish_state(v);
+              }
+              p = strstr(text, "Air Temp");
+              if (p) {
+
+                p += 8; while (*p == ' ') p++;
+                float v = 0; bool ok = false;
+                while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                if (ok) id(air_temp).publish_state(v);
+              }
+            }
+
+            // Heater mode: latch on "Heater Auto" or "Heater Manual Off" screens.
+            // The display cycles, so we hold the last proven state and start a
+            // 60-second timeout. g_heater_proof_ms records when we last saw proof.
+            if (strstr(text, "Heater")) {
+              if (strstr(text, "Auto")) {
+                id(heater_auto).publish_state(true);
+                id(g_heater_proof_ms) = millis();
+              } else if (strstr(text, "Manual Off")) {
+                id(heater_auto).publish_state(false);
+                id(g_heater_proof_ms) = millis();
+              }
+            }
+            // Revert to false if no heater-screen proof has arrived for 60 s.
+            // (Set to 2-3x your display cycle period; AquaLogic cycles ~every 20 s.)
+            if (id(g_heater_proof_ms) != 0 &&
+                millis() - id(g_heater_proof_ms) > 60000UL) {
+              id(heater_auto).publish_state(false);
+              id(g_heater_proof_ms) = 0;
+            }
+
+    # ---------------------------------------------------------------------------
+    # VSP (variable-speed pump) frames -- omit if you do not have a VSP pump.
+    # ---------------------------------------------------------------------------
+
+    # Commanded speed: the controller writes the target speed (0-100%) as a
+    # single byte at payload offset 3 of frame type 0x0c 0x01.
+    - frame_type: [0x0c, 0x01]
+      then:
+        - lambda: |-
+            if (payload.size() < 4) return;
+            id(vsp_speed).publish_state(float(payload[3]));
+
+    # VSP power: the pump reports consumed watts as BCD in bytes 5-7 of frame
+    # type 0x00 0x0c. Each byte holds two decimal digits (high nibble = tens).
+    - frame_type: [0x00, 0x0c]
+      then:
+        - lambda: |-
+            if (payload.size() < 7) return;
+            // 4: speed (actual?)
+            // 5,6 as BCD power
+            uint32_t watts = 0;
+            for (size_t i = 5; i < 7; i++)
+              watts = watts * 100 + uint32_t(payload[i] >> 4) * 10 + uint32_t(payload[i] & 0x0F);
+            id(vsp_power).publish_state(float(watts));
+
+# Commands are modeled as buttons because they are momentary keypress events
+# on the RS485 bus. The controller decides the resulting state; use the LED
+# binary sensors below to read back the actual state.
+#
+# Command values confirmed from live bus captures:
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Lights"
+    command: 0x00010000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Filter"
+    command: 0x80000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Pool Spa Mode"
+    command: 0x40000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "System Off"
+    command: 0x08000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "AUX 1"  # Rename to match your AUX 1 load (e.g. "Blower")
+    command: 0x00020000  # e.g. BLOWER, CLEANER -- depends on your wiring
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "AUX 2"  # Rename to match your AUX 2 load (e.g. "UV")
+    command: 0x00040000  # e.g. UV, SPA LIGHT -- depends on your wiring
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Menu"
+    command: 0x02000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Plus"
+    command: 0x20000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Minus"
+    command: 0x10000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Right"
+    command: 0x01000000
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Left"
+    command: 0x04000000
+
+  # Uncomment any additional commands your system has.
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Heater"
+  #  command: 0x00000400  # toggles heater mode (Manual Off / Auto)
+
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Valve 3"
+  #  command: 0x00000100
+
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Valve 4"
+  #  command: 0x00000200
+
+  # Unverified -- from community reverse-engineering (https://github.com/swilson/aqualogic).
+  # Uncomment and test if your system has these features.
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 3"
+  #  command: 0x00000800
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 4"
+  #  command: 0x00001000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 5"
+  #  command: 0x00002000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 6"
+  #  command: 0x00004000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 7"
+  #  command: 0x00008000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 8"
+  #  command: 0x00080000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 9"
+  #  command: 0x00100000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 10"
+  #  command: 0x00200000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 11"
+  #  command: 0x00400000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "AUX 12"
+  #  command: 0x00800000
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Service"
+  #  command: 0x00000008
+
+binary_sensor:
+  # LED state sensors. These receive their values from the on_frame: [0x01, 0x02]
+  # handler above -- no per-sensor lambda needed. device_class is set for each so
+  # HA picks an appropriate default icon and the entity carries the right semantics
+  # (avoids HA's "missing device_class" warning for status binary sensors).
+  - platform: template
+    id: led_filter
+    name: "Filter"
+    device_class: running
+
+  - platform: template
+    id: led_lights
+    name: "Lights"
+    device_class: light
+
+  - platform: template
+    id: led_aux1
+    name: "AUX 1"  # Rename to match your AUX 1 load
+    device_class: running
+
+  - platform: template
+    id: led_aux2
+    name: "AUX 2"  # Rename to match your AUX 2 load
+    device_class: running
+
+  - platform: template
+    id: led_pool_mode
+    name: "Pool Mode"
+    device_class: running
+
+  - platform: template
+    id: led_spa_mode
+    name: "Spa Mode"
+    device_class: running
+
+  - platform: template
+    id: led_heater
+    name: "Heater"
+    device_class: heat
+    # True when the heater is actively heating. Distinct from heater mode
+    # (Auto / Manual Off), which is visible only on the display.
+
+  - platform: template
+    id: led_check
+    name: "Check System"
+    device_class: problem
+
+  # Heater mode (Auto vs. Manual Off) is not in the LED frame. It is latched
+  # and timed out by the on_frame: [0x01, 0x03] handler above.
+  - platform: template
+    id: heater_auto
+    name: "Heater Auto Mode"
+    device_class: heat
+
+text_sensor:
+  # Display text sensors receive values from the on_frame: [0x01, 0x03] handler.
+  - platform: template
+    id: display_text
+    name: "Display"
+
+  - platform: template
+    id: display_blink
+    name: "Display Blink"
+    # Non-empty string when any character on the display is blinking.
+    # Automations can trigger on state != "" to detect alarms or mode changes.
+
+  # "Last Frame Type" is useful for debugging unexpected bus activity. Publishes
+  # the type of the most recently validated frame as a 4-char hex string ("0103" etc.).
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Last Frame Type"
+
+sensor:
+  # Temperature and VSP sensors receive values from the on_frame: handlers above.
+  # state_class: measurement is required by HA for long-term statistics on gauge
+  # readings; without it HA logs a "missing state_class" warning at startup.
+  - platform: template
+    id: pool_temp
+    name: "Pool Temperature"
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: air_temp
+    name: "Air Temperature"
+    unit_of_measurement: "°F"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: vsp_speed
+    name: "VSP Commanded Speed"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 1s
+
+  - platform: template
+    id: vsp_power
+    name: "VSP Power"
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 1s
+
+  # Diagnostic counters from the rs485_frame sensor platform. state_class,
+  # unit_of_measurement, and entity_category (diagnostic) are filled in
+  # automatically per decode value, so the entries below need no extra YAML.
+  #- platform: rs485_frame
+  #  rs485_frame_id: pool
+  #  name: "Frames Received"
+  #  decode: frames_received
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "CRC Failures"
+    decode: crc_failures
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Command Drops"
+    decode: command_drops

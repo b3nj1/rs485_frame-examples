@@ -1,0 +1,340 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!
+# =============================================================================
+# This Jandy AquaLink RS configuration is 100% UNTESTED. It has NEVER been
+# verified on physical hardware by anyone. The protocol bytes, frame types,
+# device addresses, CRC, and timing here are community reverse-engineering
+# GUESSES and may be wrong. Do not assume any of it works. Treat it strictly as
+# a research starting point, validate every byte against your own bus captures,
+# and please open an issue with corrections if you test it.
+# =============================================================================
+#
+# Jandy AquaLink RS — Passive Observer (UNTESTED DRAFT)
+#
+# Protocol references:
+#   - Envelope format (DLE STX <data> <checksum> DLE ETX):
+#     https://wiki.jmehan.com/display/KNOW/Jandy+Pool+Heater
+#   - Frame type catalog and device addressing:
+#     https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# This configuration observes a Jandy AquaLink RS8/RS12/RS16 bus without
+# sending any commands. It decodes LED state, display messages, SWG (salt
+# chlorinator) PPM and status, ePump (variable speed pump) RPM and watts,
+# and diagnostic counters.
+#
+# Hardware: an ESPHome device + RS485 TTL adapter. Passive mode never
+# transmits so no flow_control_pin is needed. If your adapter has a DE/RE
+# pin, tie it permanently to the direction that enables RX (usually RE low,
+# DE low).
+#
+# UART settings: 9600 baud, 8N1 (different from Hayward's 19200 8N2).
+#
+# Discovery workflow:
+#   1. Flash this config with sniffer_only: true and dump_frames: true.
+#   2. Watch the Last Frame Type sensor (or ESPHome logs) to catalog frame types.
+#   3. Common frame types you will see:
+#        XX 00 — probe to device at address 0xXX
+#        XX 01 — ACK from 0xXX (possibly with key command in data byte)
+#        XX 02 — LED status sent to device 0xXX  (5 bytes, 2 bits/LED)
+#        XX 03 — display message to device 0xXX  (16 bytes ASCII)
+#        00 16 — SWG PPM response to master
+#        00 1F — ePump status to master (RPM, watts)
+#   4. Note which address your AllButton device occupies (the one that receives
+#      0xXX 02 with changing LED data when you press physical buttons). That is
+#      your_allbutton_address. Update the [0x08, ...] filter values below if your
+#      AllButton lives at a different address.
+#   5. Toggle each physical button and watch which LED bits change in the logs
+#      to map LED index to button function for your specific panel layout.
+
+esphome:
+  name: jandy-observer
+  friendly_name: Jandy AquaLink Observer
+
+# Required -- fill in your board identifier.
+# See https://esphome.io/components/esp32 for the full list.
+# Passive mode never transmits so flow_control_pin is not needed.
+# ESP-IDF is recommended for consistency with the active config.
+esp32:
+  board: esp32-s3-devkitc-1    # replace with your variant
+  framework:
+    type: esp-idf
+
+logger:
+  # level: INFO  # DEBUG | INFO | WARN | ERROR | NONE
+
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Remove this block once rs485_frame is included in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
+uart:
+  id: pool_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  baud_rate: 9600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 512
+
+rs485_frame:
+  id: pool
+  uart_id: pool_uart
+  sniffer_only: true         # passive observer: never transmits, so no tx.gate needed
+  dump_frames: false         # set true during discovery; logs every frame at DEBUG
+  max_frame_length: 256      # iAqualinkTouch sends packets > 128 bytes
+  # escape: unverified for Jandy; escape_byte 0x00 is a guess. If captures show doubled
+  # DLEs (10 10), switch to mode: double.
+  framing:
+    escape:
+      mode: escape_byte
+      byte: 0x00
+  crc:
+    type: sum8
+    rx_accept: [header_inclusive]
+    tx_variant: header_inclusive
+
+  # ---------------------------------------------------------------------------
+  # Decode handlers. One `on_frame:` per frame type, pushing values to template
+  # sensors below. All decoding is heap-free — stack buffers and direct indexing.
+  # See the rs485_frame hub docs for lambda best practices.
+  # ---------------------------------------------------------------------------
+  on_frame:
+    # LED status frame: 5 bytes of LED data, 2 bits/LED (bit 0 = ON, bit 1 = FLASH).
+    # frame_type [0x08, 0x02] targets the AllButton at address 0x08 -- change if your
+    # controller uses a different AllButton address (0x08..0x0B).
+    - frame_type: [0x08, 0x02]
+      then:
+        - lambda: |-
+            if (payload.size() < 7) return;
+            // payload[2] = LEDs 0-3, payload[3] = LEDs 4-7, etc.
+            id(led_filter_pump).publish_state(bool((payload[2] >> 0) & 1));  // LED 0
+            id(led_spa).publish_state(bool((payload[2] >> 2) & 1));          // LED 1
+            id(led_aux1).publish_state(bool((payload[2] >> 4) & 1));         // LED 2
+            id(led_aux2).publish_state(bool((payload[2] >> 6) & 1));         // LED 3
+            id(led_aux3).publish_state(bool((payload[3] >> 0) & 1));         // LED 4
+            id(led_aux4).publish_state(bool((payload[3] >> 2) & 1));         // LED 5
+            id(led_pool_heater).publish_state(bool((payload[5] >> 4) & 1));  // LED 14
+            id(led_spa_heater).publish_state(bool((payload[6] >> 0) & 1));   // LED 16
+
+    # Display message frame: 16 bytes of ASCII to the AllButton.
+    - frame_type: [0x08, 0x03]
+      then:
+        - lambda: |-
+            if (payload.size() < 3) return;
+            // BUF_LEN sized generously to cover any AllButton/OneTouch display variant
+            // and iAqualinkTouch panels (which send longer message frames). static:
+            // BSS-allocated once at program start -- no per-call stack or heap, matching
+            // the hub's setup-time buffer discipline.
+            const size_t BUF_LEN = 128;
+            static char text[BUF_LEN];
+            uint8_t tlen = 0;
+            for (size_t i = 2; i < payload.size() && tlen < (BUF_LEN - 1); i++) {
+              uint8_t b = payload[i];
+              if (b == 0 || b == ' ') {
+                if (tlen > 0 && text[tlen - 1] != ' ')
+                  text[tlen++] = ' ';
+              } else if (b >= 0x20 && b < 0x7F) {
+                text[tlen++] = char(b);
+              }
+            }
+            while (tlen > 0 && text[tlen - 1] == ' ') tlen--;
+            id(pool_display).publish_state(std::string(text, tlen));
+
+    # SWG (Salt Water Generator) status + PPM. Single frame carries both.
+    - frame_type: [0x00, 0x16]
+      then:
+        - lambda: |-
+            if (payload.size() < 4) return;
+            id(swg_salt_ppm).publish_state(float(payload[2]) * 100.0f);
+            uint8_t status = payload[3];
+            id(swg_normal).publish_state(status == 0x00);
+            id(swg_no_flow).publish_state(bool(status & 0x01));
+            id(swg_low_salt).publish_state(bool(status & 0x02));
+            id(swg_high_salt).publish_state(bool(status & 0x04));
+            id(swg_clean_cell).publish_state(bool(status & 0x08));
+            id(swg_low_temp).publish_state(bool(status & 0x40));
+
+    # SWG chlorine output percent from master (CMD_PERCENT to address 0x50).
+    - frame_type: [0x50, 0x11]
+      then:
+        - lambda: |-
+            if (payload.size() < 3) return;
+            id(swg_chlorine_output).publish_state(float(payload[2]));
+
+    # ePump status: RPM (uint16_be at offset 6) and watts (uint16_be at offset 4).
+    - frame_type: [0x00, 0x1F]
+      then:
+        - lambda: |-
+            if (payload.size() < 8) return;
+            uint16_t watts = (uint16_t(payload[4]) << 8) | payload[5];
+            uint16_t rpm = (uint16_t(payload[6]) << 8) | payload[7];
+            id(epump_watts).publish_state(float(watts));
+            id(epump_rpm).publish_state(float(rpm));
+
+    # Heater error code.
+    - frame_type: [0x00, 0x0D]
+      then:
+        - lambda: |-
+            if (payload.size() < 7) return;
+            id(heater_error).publish_state(payload[6] == 0x10);
+
+# ---------------------------------------------------------------------------
+# Template sensors driven by the on_frame: handlers above.
+# ---------------------------------------------------------------------------
+
+binary_sensor:
+  # LED state mirrors. device_class is set so HA picks the right icon and so
+  # status binary sensors don't trigger HA's "missing device_class" warning.
+  - platform: template
+    id: led_filter_pump
+    name: "Filter Pump"
+    device_class: running
+
+  - platform: template
+    id: led_spa
+    name: "Spa"
+    device_class: running
+
+  - platform: template
+    id: led_aux1
+    name: "Aux 1"
+    device_class: running
+
+  - platform: template
+    id: led_aux2
+    name: "Aux 2"
+    device_class: running
+
+  - platform: template
+    id: led_aux3
+    name: "Aux 3"
+    device_class: running
+
+  - platform: template
+    id: led_aux4
+    name: "Aux 4"
+    device_class: running
+
+  - platform: template
+    id: led_pool_heater
+    name: "Pool Heater"
+    device_class: running
+
+  - platform: template
+    id: led_spa_heater
+    name: "Spa Heater"
+    device_class: running
+
+  # "Normal" is the inverse of every fault below; no HA device_class fits a generic
+  # "is everything okay" indicator, so leave undefined.
+  - platform: template
+    id: swg_normal
+    name: "SWG Normal"
+
+  - platform: template
+    id: swg_no_flow
+    name: "SWG No Flow"
+    device_class: problem
+
+  - platform: template
+    id: swg_low_salt
+    name: "SWG Low Salt"
+    device_class: problem
+
+  - platform: template
+    id: swg_high_salt
+    name: "SWG High Salt"
+    device_class: problem
+
+  - platform: template
+    id: swg_clean_cell
+    name: "SWG Clean Cell"
+    device_class: problem
+
+  - platform: template
+    id: swg_low_temp
+    name: "SWG Low Temp"
+    device_class: cold
+
+  - platform: template
+    id: heater_error
+    name: "Heater Error"
+    device_class: problem
+
+text_sensor:
+  - platform: template
+    id: pool_display
+    name: "Pool Display"
+
+  # Hub diagnostic: most recently validated frame type as 4-hex string.
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Last Frame Type"
+
+sensor:
+  # Template sensors all carry state_class: measurement so HA enables long-term
+  # statistics and does not log "missing state_class" warnings at startup.
+  - platform: template
+    id: swg_salt_ppm
+    name: "SWG Salt PPM"
+    unit_of_measurement: ppm
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: swg_chlorine_output
+    name: "SWG Chlorine Output"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: epump_watts
+    name: "ePump Watts"
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 5s
+
+  - platform: template
+    id: epump_rpm
+    name: "ePump RPM"
+    unit_of_measurement: RPM
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 5s
+
+  # Diagnostic counters from the rs485_frame sensor platform. state_class,
+  # unit_of_measurement, and entity_category (diagnostic) are filled in
+  # automatically per decode value, so the entries below need no extra YAML.
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Frames Received"
+    decode: frames_received
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "CRC Failures"
+    decode: crc_failures
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Bus Poll Interval"
+    decode: last_keepalive_ms
