@@ -1,0 +1,73 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — ACTIVELY TRANSMITS — AT YOUR OWN RISK !!!
+# =============================================================================
+# This config TRANSMITS onto a live bus (see allbutton.yaml / bus.yaml warnings).
+# Confirm the bus first with example-passive.yaml. Validate every byte against
+# your own captures before flashing this.
+# =============================================================================
+# Jandy AquaLink RS — example device config: active AllButton emulator (UNTESTED)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+#
+# Contributors:
+#   - earlephilhower, jmehan wiki contributors
+# =============================================================================
+#
+# HOW TO USE THIS FILE
+#   1. Copy and rename it; fill in the substitutions below (including flow_control_pin,
+#      which active mode needs to drive the RS485 DE/RE direction pin).
+#   2. allbutton.yaml is REQUIRED here (it turns the hub active). Uncomment the
+#      equipment profiles you have and delete the rest.
+#   3. Add wifi_ssid / wifi_password to your secrets.yaml.
+#   4. If your AllButton lives at an address other than 0x08, change the gate in
+#      allbutton.yaml and the frame addresses in leds-display.yaml.
+
+substitutions:
+  name: jandy-allbutton
+  friendly_name: Jandy AquaLink Controller
+  board: esp32-s3-devkitc-1   # see https://esphome.io/components/esp32 for the full list
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  flow_control_pin: GPIO21    # DE/RE direction pin — required for transmission
+  # Temperature units: set to °C / C if in Celsius region
+  temp_unit: "°F"
+  temp_unit_short: "F"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: ${board}
+  framework:
+    type: esp-idf
+
+logger:
+api:
+ota:
+  platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Temporary — tracks the PR branch. Remove once rs485_frame ships in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
+packages:
+  rs485:
+    url: https://github.com/b3nj1/rs485_frame-examples
+    ref: v1.0.0          # PINNED release tag — bump deliberately to update
+    refresh: 1d
+    files:
+      # Bus package is REQUIRED and stays uncommented.
+      - jandy/aqualink-rs/bus.yaml
+      # AllButton emulator is REQUIRED for this active config (it transmits).
+      - jandy/aqualink-rs/allbutton.yaml
+      # --- Equipment: uncomment the lines for gear you have, delete the rest. ---
+      # - jandy/aqualink-rs/leds-display.yaml    # Panel LEDs + display — Status: UNTESTED
+      # - jandy/aqualink-rs/swg.yaml             # Salt chlorinator — Status: UNTESTED
+      # - jandy/aqualink-rs/epump.yaml           # Variable-speed ePump — Status: UNTESTED
+      # - jandy/aqualink-rs/heater.yaml          # Heater error — Status: UNTESTED

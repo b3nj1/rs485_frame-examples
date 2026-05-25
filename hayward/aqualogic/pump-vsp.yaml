@@ -1,0 +1,70 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — equipment profile: VSP pump
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic with variable-speed pump; ESP32-S3;
+#              ESPHome 2026.6.0-dev; rs485_frame @ github://b3nj1/esphome@rs485_frame
+# Bus:         19200 baud, 8N2  (see bus.yaml)
+# Owns frames: [0x0c,0x01] commanded speed; [0x00,0x0c] pump power report
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/swilson/aqualogic
+#
+# Contributors:
+#   - b3nj1 (@b3nj1) — capture, decode, packaging
+# =============================================================================
+#
+# Variable-speed pump. Adds to the shared `pool` hub from bus.yaml via
+# `id: !extend pool`. Include only if you have a VSP pump.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      # Commanded speed: the controller writes the target speed (0-100%) as a
+      # single byte at payload offset 3 of frame type 0x0c 0x01.
+      - frame_type: [0x0c, 0x01]
+        then:
+          - lambda: |-
+              if (payload.size() < 4) return;
+              id(vsp_speed).publish_state(float(payload[3]));
+
+      # VSP pump status: actual speed (0-100%) at payload[4]; consumed watts as
+      # packed BCD in bytes 5-6 (each byte = two decimal digits, high nibble = tens).
+      # Example: 0x21 0x78 = 2178 W. Bytes are BCD, not ASCII.
+      - frame_type: [0x00, 0x0c]
+        then:
+          - lambda: |-
+              if (payload.size() < 7) return;
+              id(vsp_actual_speed).publish_state(float(payload[4]));
+              uint32_t watts = 0;
+              for (size_t i = 5; i < 7; i++)
+                watts = watts * 100 + uint32_t(payload[i] >> 4) * 10 + uint32_t(payload[i] & 0x0F);
+              id(vsp_power).publish_state(float(watts));
+
+sensor:
+  - platform: template
+    id: vsp_speed
+    name: "VSP Commanded Speed"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 1s
+
+  - platform: template
+    id: vsp_actual_speed
+    name: "VSP Actual Speed"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 1s
+
+  - platform: template
+    id: vsp_power
+    name: "VSP Power"
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 1s
