@@ -1,0 +1,91 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!
+# =============================================================================
+# Every Jandy AquaLink RS file in this directory is 100% UNTESTED. It has NEVER
+# been verified on physical hardware by anyone. The protocol bytes, frame types,
+# device addresses, CRC, and timing are community reverse-engineering GUESSES and
+# may be wrong. The AllButton emulator (allbutton.yaml) actively TRANSMITS, so a
+# wrong guess can disrupt a live controller. Validate every byte against your own
+# captures before enabling transmission, and please open an issue with results.
+# =============================================================================
+#
+# Jandy AquaLink RS — bus package (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1
+# Owns frames: framing/CRC only; passive base (sniffer_only). Active emulation is
+#              added by allbutton.yaml.
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  Envelope (DLE STX <data> <checksum> DLE ETX):
+#                https://wiki.jmehan.com/display/KNOW/Jandy+Pool+Heater
+#              Frame catalog + device addressing:
+#                https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Shared hub for the Jandy AquaLink RS8/RS12/RS16 family. Defaults to a PASSIVE
+# observer (sniffer_only: true) — it never transmits, so no flow_control_pin is
+# needed and DE/RE can be tied to the receive state. Equipment profiles
+# (leds-display.yaml, swg.yaml, epump.yaml, heater.yaml) add decoders via
+# `id: !extend pool`; allbutton.yaml converts the hub to an active AllButton
+# emulator. Both example device configs in this directory show the wiring.
+#
+# escape: the Jandy DLE-stuffing scheme is unverified; escape_byte 0x00 mirrors
+# the Hayward convention and is a guess. If captures show doubled DLEs (10 10),
+# switch to mode: double.
+
+uart:
+  - id: pool_uart
+    # If you receive no data, try swapping tx_pin and rx_pin.
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+    baud_rate: 9600
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+    rx_buffer_size: 512
+    # No flow_control_pin in the passive base. allbutton.yaml adds it via
+    # `uart: [{id: !extend pool_uart, flow_control_pin: ${flow_control_pin}}]`.
+
+rs485_frame:
+  - id: pool
+    uart_id: pool_uart
+    sniffer_only: true         # passive base: never transmits, so no tx.gate needed
+    dump_frames: false         # set true during discovery; logs every frame at DEBUG
+    max_frame_length: 256      # iAqualinkTouch sends packets > 128 bytes
+    framing:
+      escape:
+        mode: escape_byte
+        byte: 0x00
+    crc:
+      type: sum8
+      rx_accept: [header_inclusive]
+      tx_variant: header_inclusive
+
+text_sensor:
+  # Hub diagnostic: most recently validated frame type as a 4-hex string.
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Last Frame Type"
+
+sensor:
+  # Diagnostic counters. state_class / unit_of_measurement / entity_category
+  # are supplied automatically per decode value.
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Frames Received"
+    decode: frames_received
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "CRC Failures"
+    decode: crc_failures
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Bus Poll Interval"
+    decode: last_keepalive_ms

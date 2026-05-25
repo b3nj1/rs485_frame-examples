@@ -1,0 +1,120 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — ACTIVELY TRANSMITS — AT YOUR OWN RISK !!!
+# =============================================================================
+# This profile makes the hub TRANSMIT onto a live bus. Every byte here — the
+# AllButton ACK third byte 0x80, the device address 0x08, the CRC, and the
+# ~60 ms poll-cycle ACK timing (which an ESP under WiFi load may miss) — is an
+# UNVERIFIED community guess. A wrong guess can disrupt a live controller.
+# Validate against your own captures before enabling. See bus.yaml for the full
+# warning and protocol references.
+# =============================================================================
+#
+# Jandy AquaLink RS — active AllButton emulator extras (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1  (see bus.yaml)
+# Owns frames: TX gate [0x08,0x00] (probe to AllButton at 0x08); ACK + key commands
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Converts the passive `pool` hub from bus.yaml into an active AllButton emulator
+# and adds the keypress buttons. Include the LED/display/equipment profiles too
+# (see example-allbutton.yaml) to read state back.
+#
+# How it works: the RS controller polls each device address in turn. When it
+# probes our AllButton address (0x08), the TX gate fires and we ACK. tx.idle_command
+# (key=0x00, no-op) ACKs every probe so the controller does not mark us offline;
+# a button press queues a real key byte for the next ACK. tx.idle_command requires
+# a command_format, which is why it is declared here.
+#
+# AllButton addresses are 0x08..0x0B. If yours differs, change BOTH the tx.gate
+# frame_type below and the [0x08, ...] frame addresses in leds-display.yaml.
+
+# Active emulation must drive the RS485 DE/RE direction pin. The passive base
+# (bus.yaml) leaves flow_control_pin unset; add it here by extending the uart.
+uart:
+  - id: !extend pool_uart
+    flow_control_pin: ${flow_control_pin}
+
+rs485_frame:
+  - id: !extend pool
+    sniffer_only: false        # override the passive base: this hub now transmits
+    # AllButton ACK: preamble [0x00, 0x01, 0x80] + 1-byte command. 0x80 is a guess.
+    command_format:
+      preamble: [0x00, 0x01, 0x80]
+      command_size: 1
+    tx:
+      gate:
+        mode: frame_trigger
+        # AllButton at address 0x08 + CMD_PROBE 0x00. Change to [0x09, 0x00] ..
+        # [0x0B, 0x00] if your AllButton lives at a different address.
+        frame_type: [0x08, 0x00]
+      idle_command: 0x00        # ACK with key=0x00 on every probe (requires command_format)
+      queue_policy: replace_latest
+      max_queue_size: 1
+
+# Buttons (send commands to the controller). Command value = 32-bit word whose
+# low byte is the Jandy key byte. Key bytes from community reverse-engineering;
+# verify on your system.
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Filter Pump"
+    command: 0x00000002   # key byte = 0x02
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Spa"
+    command: 0x00000001
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Aux 1"
+    command: 0x00000005
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Aux 2"
+    command: 0x0000000a
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Aux 3"
+    command: 0x0000000f
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Aux 4"
+    command: 0x00000006   # use 0x14 for RS12/RS16 systems
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Pool Heater"
+    command: 0x00000012
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Spa Heater"
+    command: 0x00000017
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Hold"
+    command: 0x00000019
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Override"
+    command: 0x0000001e
+
+sensor:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Commands Sent"
+    decode: commands_sent

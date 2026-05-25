@@ -1,0 +1,84 @@
+# =============================================================================
+# <Vendor> <Controller family> — bus package
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware | UNTESTED-draft
+# Tested on:   <controller model>, firmware <rev>; <ESP board>; ESPHome <x.y.z>;
+#              rs485_frame <component version / git ref>
+# Bus:         <baud> baud, <data><parity><stop>   (e.g. 19200 8N2)
+# Owns frames: gate + command frames (this file owns framing/CRC/TX, not decoders)
+# Offsets:     payload-relative — payload[0..N-1] = frame_type, data starts at payload[N]
+# References:  <reverse-engineering source links>
+#
+# Contributors:
+#   - <Name (@handle)> — <contribution>  <link>
+# =============================================================================
+#
+# Bus package skeleton. Copy to <vendor>/<controller-family>/bus.yaml and fill in
+# the placeholders. This is the shared hub for one controller family; it owns the
+# bus-wide required fields (uart, framing, crc, tx, command_format) and any
+# panel-wide entities. Equipment profiles add to it via `id: !extend <hub_id>`.
+# See CONTRIBUTING.md for the rules.
+#
+# Required substitutions the DEVICE config must define: name, friendly_name, board,
+# tx_pin, rx_pin, flow_control_pin (+ any list-valued substitution like a command
+# preamble — those MUST be defined only in the device file, never defaulted here,
+# because list substitutions concatenate when set in two places).
+#
+# The `external_components:` block (github://b3nj1/esphome@rs485_frame) belongs in
+# the example-device.yaml, NOT here. Users cannot override a package's
+# external_components, and the block will be deleted once rs485_frame is upstream.
+
+uart:
+  - id: <hub_id>_uart
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+    baud_rate: 19200          # TODO: your bus baud rate
+    data_bits: 8              # TODO
+    parity: NONE              # TODO: NONE | EVEN | ODD
+    stop_bits: 1              # TODO: 1 | 2
+    rx_buffer_size: 512
+    flow_control_pin: ${flow_control_pin}   # omit for a passive (sniffer_only) base
+
+rs485_frame:
+  - id: <hub_id>             # entities reference this via rs485_frame_id: <hub_id>
+    uart_id: <hub_id>_uart
+    framing:
+      escape:
+        mode: double          # TODO: double (DLE DLE) or escape_byte + byte: 0xNN
+    crc:
+      type: crc16_modbus      # TODO: none | sum8 | sum16_big_endian | sum16_little_endian | xor8 | crc16_modbus
+      tx_variant: header_inclusive   # TODO: header_inclusive | payload_only
+    tx:
+      gate:
+        mode: frame_trigger   # TODO: frame_trigger (with frame_type) | idle_gap | fixed_delay
+        frame_type: [0x00, 0x00]   # TODO: the keep-alive frame your bus gates writes on
+      queue_policy: replace_latest
+      max_queue_size: 1
+    # command_format is required by the `command:` button shorthand and by
+    # tx.idle_command. Omit it (and use raw frame_type+payload buttons) if your bus
+    # has no regular preamble/command/postamble structure.
+    command_format:
+      preamble: ${cmd_preamble}   # define this list in the DEVICE config
+      command_size: 1             # TODO
+    dump_frames: false
+
+    # Panel-wide on_frame decoders go here (per-equipment decoders go in profiles).
+    # on_frame:
+    #   - frame_type: [0x00, 0x00]
+    #     then:
+    #       - lambda: |-
+    #           if (payload.size() < 3) return;
+    #           id(some_panel_sensor).publish_state(float(payload[2]));
+
+# Panel-wide entities (diagnostics, nav buttons, panel LEDs/display). Per-equipment
+# entities live in the equipment profiles.
+sensor:
+  - platform: rs485_frame
+    rs485_frame_id: <hub_id>
+    name: "CRC Failures"
+    decode: crc_failures
+
+text_sensor:
+  - platform: rs485_frame
+    rs485_frame_id: <hub_id>
+    name: "Last Frame Type"

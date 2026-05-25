@@ -1,0 +1,94 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — equipment profile: heater
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic with gas/heat-pump heater; ESP32-S3;
+#              ESPHome 2026.6.0-dev; rs485_frame @ github://b3nj1/esphome@rs485_frame
+# Bus:         19200 baud, 8N2  (see bus.yaml)
+# Owns frames: [0x01,0x02] bit 0 (heater active LED); [0x01,0x03] heater-mode latch
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/swilson/aqualogic
+#
+# Contributors:
+#   - b3nj1 (@b3nj1) — capture, decode, packaging
+# =============================================================================
+#
+# Heater. Demonstrates the shared-frame case: it registers its own handlers on
+# [0x01,0x02] (reads only the heater LED, bit 0) and [0x01,0x03] (the heater-mode
+# latch), coexisting with the panel/lights/aux handlers on the same frame types.
+# Adds to the shared `pool` hub via `id: !extend pool`.
+
+globals:
+  # Timestamp (millis) of the last heater-mode proof seen on the display.
+  # Used to revert heater_auto to false after 60 s with no confirming screen.
+  - id: g_heater_proof_ms
+    type: uint32_t
+    initial_value: '0'
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      # Heater active LED — bit 0 of the solid LED mask in the panel LED frame.
+      - frame_type: [0x01, 0x02]
+        then:
+          - lambda: |-
+              if (payload.size() < 6) return;
+              uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
+                              (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
+              id(led_heater).publish_state(bool(mask & (1UL << 0)));
+
+      # Heater mode (Auto vs Manual Off) is not in the LED frame — it appears only
+      # on the cycling display. Latch on the "Heater Auto" / "Heater Manual Off"
+      # screens and hold the last proven state, reverting after a 60 s timeout.
+      # This re-decodes the display text (independent of bus.yaml's handler) so the
+      # heater logic stays self-contained in this profile.
+      - frame_type: [0x01, 0x03]
+        then:
+          - lambda: |-
+              // Stack buffer; strip the blink bit and keep printable ASCII.
+              const size_t BUF_LEN = 128;
+              static char text[BUF_LEN];
+              uint8_t tlen = 0;
+              for (size_t i = 3; i < payload.size() && tlen < (BUF_LEN - 1); i++) {
+                uint8_t b = payload[i] & 0x7f;
+                if (b < 0x20 || b > 0x7E) continue;
+                text[tlen++] = char(b);
+              }
+              text[tlen] = '\0';
+
+              if (strstr(text, "Heater")) {
+                if (strstr(text, "Auto")) {
+                  id(heater_auto).publish_state(true);
+                  id(g_heater_proof_ms) = millis();
+                } else if (strstr(text, "Manual Off")) {
+                  id(heater_auto).publish_state(false);
+                  id(g_heater_proof_ms) = millis();
+                }
+              }
+              // Revert to false if no heater-screen proof has arrived for 60 s.
+              // (Set to 2-3x your display cycle period; AquaLogic cycles ~every 20 s.)
+              if (id(g_heater_proof_ms) != 0 &&
+                  millis() - id(g_heater_proof_ms) > 60000UL) {
+                id(heater_auto).publish_state(false);
+                id(g_heater_proof_ms) = 0;
+              }
+
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Heater"
+    command: 0x00000400  # toggles heater mode (Manual Off / Auto)
+
+binary_sensor:
+  - platform: template
+    id: led_heater
+    name: "Heater"
+    device_class: heat
+    # True when the heater is actively heating. Distinct from heater mode
+    # (Auto / Manual Off), which is visible only on the display.
+
+  - platform: template
+    id: heater_auto
+    name: "Heater Auto Mode"
+    device_class: heat
+    # Latched and timed out by the on_frame: [0x01, 0x03] handler above.

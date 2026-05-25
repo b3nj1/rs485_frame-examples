@@ -1,0 +1,56 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — per-button package
+# -----------------------------------------------------------------------------
+# Include once per button you want to expose in Home Assistant.
+# The button sends the command value through the pool hub using the hub's
+# command_format by default (set via cmd_preamble / cmd_postamble in your
+# device config). To override the wire format for a specific button — e.g.
+# Service (wired preamble only) or System Off (wireless always) — pass the
+# btn_preamble / btn_postamble vars in the include entry.
+#
+# Required vars:
+#   button_name     Friendly name shown in Home Assistant.
+#   button_command  32-bit command value (hex string, e.g. "0x80000000").
+#
+# Optional vars:
+#   disabled_by_default  Whether to hide the entity in HA by default (default: "false").
+#   btn_preamble    Frame-type preamble bytes as an unquoted YAML list (e.g. [0x00, 0x03]).
+#                   Defaults to ${cmd_preamble} (the hub's role preamble).
+#   btn_postamble   Trailing pad bytes as an unquoted YAML list (e.g. []).
+#                   Defaults to ${cmd_postamble}.
+#   btn_cmd_size    Command payload width in bytes (default: ${cmd_size}, usually "4").
+#   btn_cmd_endian  Byte order: "big" or "little" (default: ${cmd_endian}).
+#   btn_cmd_repeat  Number of times the command payload is repeated (default: ${cmd_repeat}).
+#
+# Command values confirmed from live bus captures and community reverse-engineering:
+#   Filter       0x80000000    Pool/Spa Mode  0x40000000
+#   Plus         0x20000000    Menu           0x02000000
+#   Minus        0x10000000    Right          0x01000000
+#   Left         0x04000000    Lights         0x00010000
+#   System Off   0x08000000    (always btn_preamble wireless)
+#   Service      0x08000000    (always btn_preamble wired local [0x00,0x02], btn_postamble [])
+#   AUX 1-14, Valve 3-4: see example-device.yaml for per-relay command values.
+# =============================================================================
+
+defaults:
+  button_name: "Pool Button"
+  button_command: "0x00000000"
+  disabled_by_default: "false"
+  btn_preamble: ${cmd_preamble}
+  btn_postamble: ${cmd_postamble}
+  btn_cmd_size: ${cmd_size}
+  btn_cmd_endian: ${cmd_endian}
+  btn_cmd_repeat: ${cmd_repeat}
+
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "${button_name}"
+    command: ${button_command}
+    disabled_by_default: ${disabled_by_default}
+    command_format:
+      preamble: ${btn_preamble}
+      command_size: ${btn_cmd_size}
+      command_endian: ${btn_cmd_endian}
+      command_repeat: ${btn_cmd_repeat}
+      postamble: ${btn_postamble}

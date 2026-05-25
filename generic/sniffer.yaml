@@ -1,0 +1,66 @@
+## Passive frame-type sniffer for a DLE-framed bus once you know its framing.
+##
+## Diagnostic/bootstrap tool — monolithic by design and exempt from the package
+## structure. Run generic/discovery.yaml first if you don't know the framing bytes;
+## once you have decoded the bus, package it per CONTRIBUTING.md.
+
+esphome:
+  name: aqualogic-sniffer
+  friendly_name: AquaLogic Sniffer
+
+# Required -- fill in your board identifier.
+# See https://esphome.io/components/esp32 for the full list.
+# Sniffer mode never transmits, so framework choice is less critical here,
+# but ESP-IDF is recommended for consistency with the full config.
+esp32:
+  board: esp32-s3-devkitc-1    # replace with your variant
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO                 # keep INFO so the stats log without dump_frames noise
+
+api:
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Remove this block once rs485_frame is included in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
+uart:
+  id: pool_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 2
+  rx_buffer_size: 512
+  flow_control_pin: GPIO21    # omit if your adapter auto-manages direction
+
+rs485_frame:
+  id: pool
+  uart_id: pool_uart
+  sniffer_only: true          # never transmit
+  dump_frames: false          # keep INFO logs clean; rely on sniffer_stats instead
+  # framing.escape is required. On an uncharacterized bus start with double (DLE doubling);
+  # if payloads decode with stray 0x10 bytes, switch to escape_byte + byte. dle/stx/etx
+  # default to 0x10/0x02/0x03 — override here if your bus differs.
+  framing:
+    escape:
+      mode: double
+  crc:
+    type: none                # accept every structurally valid frame regardless of CRC
+
+  sniffer_stats:
+    interval: 30s
+    max_frame_types: 64       # ceiling — Hayward typically uses < 10
+    payload_dump_top: 20      # log hex+ASCII of every captured payload for top 8 frame types
+    reference_frame_type: [0x01, 0x01]   # keep-alive

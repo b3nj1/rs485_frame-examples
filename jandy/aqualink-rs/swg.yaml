@@ -1,0 +1,94 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!  (see bus.yaml)
+# =============================================================================
+# Jandy AquaLink RS — equipment profile: SWG / salt chlorinator (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1  (see bus.yaml)
+# Owns frames: [0x00,0x16] salt PPM + status; [0x50,0x11] chlorine output percent
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Salt Water Generator (chlorinator). Adds to the shared `pool` hub via
+# `id: !extend pool`.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      # SWG status + PPM. Single frame carries both.
+      - frame_type: [0x00, 0x16]
+        then:
+          - lambda: |-
+              if (payload.size() < 4) return;
+              id(swg_salt_ppm).publish_state(float(payload[2]) * 100.0f);
+              uint8_t status = payload[3];
+              id(swg_normal).publish_state(status == 0x00);
+              id(swg_no_flow).publish_state(bool(status & 0x01));
+              id(swg_low_salt).publish_state(bool(status & 0x02));
+              id(swg_high_salt).publish_state(bool(status & 0x04));
+              id(swg_clean_cell).publish_state(bool(status & 0x08));
+              id(swg_low_temp).publish_state(bool(status & 0x40));
+
+      # Chlorine output percent from master (CMD_PERCENT to address 0x50).
+      - frame_type: [0x50, 0x11]
+        then:
+          - lambda: |-
+              if (payload.size() < 3) return;
+              id(swg_chlorine_output).publish_state(float(payload[2]));
+
+binary_sensor:
+  # "Normal" is the inverse of every fault below; no HA device_class fits a generic
+  # "is everything okay" indicator, so leave it undefined.
+  - platform: template
+    id: swg_normal
+    name: "SWG Normal"
+
+  - platform: template
+    id: swg_no_flow
+    name: "SWG No Flow"
+    device_class: problem
+
+  - platform: template
+    id: swg_low_salt
+    name: "SWG Low Salt"
+    device_class: problem
+
+  - platform: template
+    id: swg_high_salt
+    name: "SWG High Salt"
+    device_class: problem
+
+  - platform: template
+    id: swg_clean_cell
+    name: "SWG Clean Cell"
+    device_class: problem
+
+  - platform: template
+    id: swg_low_temp
+    name: "SWG Low Temp"
+    device_class: cold
+
+sensor:
+  - platform: template
+    id: swg_salt_ppm
+    name: "SWG Salt PPM"
+    unit_of_measurement: ppm
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: swg_chlorine_output
+    name: "SWG Chlorine Output"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s

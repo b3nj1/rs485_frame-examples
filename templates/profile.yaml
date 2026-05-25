@@ -1,0 +1,48 @@
+# =============================================================================
+# <Vendor> <Controller family> — equipment profile: <NAME>
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware | UNTESTED-draft
+# Tested on:   <controller model>, firmware <rev>; <ESP board>; ESPHome <x.y.z>;
+#              rs485_frame <component version / git ref>
+# Bus:         <baud> baud, <data><parity><stop>   (see bus.yaml)
+# Owns frames: <frame_type list this profile decodes/sends, either direction>
+# Offsets:     payload-relative — payload[0..N-1] = frame_type, data starts at payload[N]
+# References:  <reverse-engineering source links>
+#
+# Contributors:
+#   - <Name (@handle)> — <contribution>  <link>
+# =============================================================================
+#
+# Equipment profile skeleton. Copy to <vendor>/<controller-family>/<name>.yaml.
+# An equipment profile is keyed on the frame_type(s) it OWNS (either direction).
+# It adds to the shared hub via `id: !extend <hub_id>` and ships only its own
+# decoders + entities. It MUST NOT define uart/framing/crc/secrets — those live in
+# bus.yaml. The hub fires EVERY on_frame handler whose prefix matches, so multiple
+# profiles can decode the same frame type: register one handler per profile and
+# guard only your own bytes/bits. See CONTRIBUTING.md.
+
+rs485_frame:
+  - id: !extend <hub_id>      # MUST match the hub id declared in bus.yaml
+    on_frame:
+      - frame_type: [0x00, 0x00]   # TODO: the frame_type this profile owns
+        then:
+          - lambda: |-
+              // Decoder best practices: guard payload.size(), no heap allocation
+              // (use stack/static buffers), build one std::string only at publish.
+              if (payload.size() < 3) return;
+              id(example_value).publish_state(float(payload[2]));
+
+sensor:
+  - platform: template
+    id: example_value
+    name: "Example Value"
+    state_class: measurement
+    accuracy_decimals: 0
+
+# Add buttons (command: <word>, relies on the hub's command_format) and other
+# entities this equipment needs:
+# button:
+#   - platform: rs485_frame
+#     rs485_frame_id: <hub_id>
+#     name: "Example Command"
+#     command: 0x00000001
