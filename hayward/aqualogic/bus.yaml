@@ -1,0 +1,381 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — bus package
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic; ESP32-S3; ESPHome 2026.6.0-dev;
+#              rs485_frame @ github://b3nj1/esphome@rs485_frame
+# Bus:         19200 baud, 8N2
+# Owns frames: gate [0x01,0x01]; command frames per command_format (wireless
+#              [0x00,0x83,0x01] by default); decodes panel LEDs [0x01,0x02] and
+#              the display [0x01,0x03]
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/swilson/aqualogic
+#              Display text patterns (Spa/Pool/Air Temp, Chlorinator %, Salt Level):
+#                https://github.com/swilson/aqualogic/blob/master/aqualogic/core.py
+#
+# Contributors:
+#   - b3nj1 (@b3nj1) — capture, decode, packaging
+#   - swilson (https://github.com/swilson/aqualogic) — display text pattern research
+# =============================================================================
+#
+# This is the shared RS485 hub for the Hayward AquaLogic / ProLogic family. It
+# is REQUIRED by every device config and owns everything the bus needs:
+#   - UART 19200 8N2
+#   - sum16_big_endian CRC, header-inclusive on TX
+#   - TX gated on the 0x01 0x01 keep-alive frame
+#   - command_format wrapping each button command with the role preamble
+#     (${cmd_preamble}) + ${cmd_size}-byte command × ${cmd_repeat} + ${cmd_postamble}
+#   - panel-wide entities: nav/mode buttons, display text, and the panel LEDs
+#
+# Equipment profiles (pump-vsp.yaml, heater.yaml) and per-button/per-LED templates
+# (button.yaml, led.yaml) add to this hub with `id: !extend pool` — they MUST NOT
+# redefine uart/framing/crc. See CONTRIBUTING.md.
+#
+# ---------------------------------------------------------------------------
+# Transmit role is selected by the ${cmd_preamble} substitution in the DEVICE
+# config (one-line edit). Verified roles:
+#   - WIRELESS remote (frame type 0x0083, recommended): [0x00, 0x83, 0x01]
+#   - WIRED REMOTE   (frame type 0x0003):               [0x00, 0x03]
+#   - WIRED LOCAL / main panel (0x0002, collision risk):[0x00, 0x02]
+#   - other wired unit-address (e.g. unit 3 = 0x04):    [0x00, 0x04]
+#     (0x04 and higher accept only menu / navigation buttons.)
+# The wireless frame type never collides with the physical main panel's own
+# keypress traffic, which is why it is the recommended default.
+# ---------------------------------------------------------------------------
+
+# ESPHome merges substitutions from packages by concatenating list values rather than
+# overriding them. A list-valued default here would double up with the device config's
+# value (e.g. [0x00, 0x83, 0x01] + [0x00, 0x83, 0x01] = 6 bytes, not 3). To keep all
+# command_format knobs in one place and avoid that footgun, ALL five are defined only in
+# the device config — none have defaults here.
+substitutions:
+  temp_unit: "°F"       # set to "°C" for Celsius regions
+  temp_unit_short: "F"  # set to "C" for Celsius regions
+
+uart:
+  id: pool_uart
+  # If you receive no data, try swapping tx_pin and rx_pin. Some adapters
+  # label DI/RO from the adapter's perspective, opposite of the device's.
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 2
+  rx_buffer_size: 512
+  # Set flow_control_pin if your RS485 adapter has a DE/RE direction pin. With
+  # ESP-IDF this enables hardware half-duplex mode: the UART peripheral drives
+  # the pin automatically with shift-register-level timing.
+  flow_control_pin: ${flow_control_pin}
+
+rs485_frame:
+  - id: pool
+    uart_id: pool_uart
+    framing:
+      escape:
+        mode: escape_byte   # Hayward stuffs a literal DLE as DLE + the byte below
+        byte: 0x00
+    crc:
+      type: sum16_big_endian
+      tx_variant: header_inclusive
+
+    tx:
+      gate:
+        mode: frame_trigger
+        frame_type: [0x01, 0x01]   # transmit right after the keep-alive frame
+      queue_policy: replace_latest
+      max_queue_size: 1
+
+    command_format:
+      preamble: ${cmd_preamble}
+      command_size: ${cmd_size}
+      command_endian: ${cmd_endian}
+      command_repeat: ${cmd_repeat}
+      postamble: ${cmd_postamble}
+
+    dump_frames: false
+
+    on_frame:
+      # -----------------------------------------------------------------------
+      # Panel LED status frame (0x01 0x02).
+      #
+      # Payload bytes 2-5: 32-bit little-endian mask of solid-lit LEDs.
+      # Confirmed bit positions (solid mask, swilson + ChaseDurand + live captures):
+      #   bit    Status LED
+      #    0     Heater 1 active
+      #    1     Valve 3
+      #    2     Check System
+      #    3     Pool Mode
+      #    4     Spa Mode
+      #    5     Filter  (flashing = pump low speed; not exposed by this profile)
+      #    6     Lights
+      #    7     AUX 1
+      #    8     AUX 2
+      #    9     Service
+      #   10     AUX 3
+      #   11     AUX 4
+      #   12     AUX 5
+      #   13     AUX 6
+      #   14     Valve 4 / Heater 2
+      #   15     Spillover
+      #   16     System Off
+      #   17     AUX 7
+      #   18     AUX 8
+      #   19     AUX 9
+      #   20     AUX 10
+      #   21     AUX 11
+      #   22     AUX 12
+      #   23     AUX 13
+      #   24     AUX 14
+      #   25     Super Chlorinate
+      #
+      # Stores the mask in g_led_mask (read by led.yaml polling binary sensors)
+      # and publishes it as hex to the led_mask_hex diagnostic text sensor.
+      # -----------------------------------------------------------------------
+      - frame_type: [0x01, 0x02]
+        then:
+          - lambda: |-
+              if (payload.size() < 6) return;
+              uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
+                              (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
+              id(g_led_mask) = mask;
+              char hex_buf[12];
+              snprintf(hex_buf, sizeof(hex_buf), "0x%08X", mask);
+              id(led_mask_hex).publish_state(std::string(hex_buf));
+
+      # -----------------------------------------------------------------------
+      # Display frame (0x01 0x03) — display text + temperatures.
+      #
+      # The controller cycles through multiple display screens. Each frame shows
+      # one screen; the lambda updates whichever sensors match the current screen.
+      #
+      # Encoding: bit 7 of each byte = blink flag; '_' = degree symbol (UTF-8).
+      # Stack buffers throughout -- no heap allocation during decode. Text sensors
+      # deduplicate internally; numeric sensors use throttle filters.
+      #
+      # The heater-mode latch is decoded separately by heater.yaml's own
+      # [0x01,0x03] handler so it stays with the heater profile.
+      # -----------------------------------------------------------------------
+      - frame_type: [0x01, 0x03]
+        then:
+          - lambda: |-
+              // BUF_LEN sized to cover Hayward Pro Logic's widest displays (~40 chars per
+              // line) plus UTF-8 degree-symbol expansion (each '_' becomes 2 bytes).
+              // static: allocated once in .bss at program start -- no per-call stack
+              // pressure and no heap, matching the hub's setup-time buffer discipline.
+              const size_t BUF_LEN = 128;
+              static char text[BUF_LEN];
+              static char blink[BUF_LEN];
+              // Encoding: strip bit 7 (blink flag); map '_' to UTF-8 degree symbol.
+              uint8_t tlen = 0;
+              // Blinking text: extract only bytes that had bit 7 set.
+              uint8_t blen = 0;
+              bool isblink = false;
+              for (size_t i = 3; i < payload.size() && tlen < (BUF_LEN-2); i++) {
+                uint8_t b = payload[i];
+                isblink = bool(b > 0x7F);
+                b &= 0x7f;
+                if (b < 0x20 || b > 0x7E) continue;
+                if (b == '_') {
+                  if (tlen + 2 <= (BUF_LEN-2)) {
+                   text[tlen++] = '\xC2'; text[tlen++] = '\xB0';
+                   if (isblink) { blink[blen++] = '\xC2'; blink[blen++] = '\xB0'; }
+                  }
+                } else {
+                  text[tlen++] = char(b);
+                  if (isblink) blink[blen++] = char(b);
+                }
+              }
+              while (tlen > 0 && text[tlen - 1] == ' ') tlen--;
+              text[tlen] = '\0';
+
+              // Publish full display text. One std::string allocation per frame at the
+              // publish_state call; the text sensor deduplicates unchanged values.
+              id(display_text).publish_state(std::string(text, tlen));
+
+              while (blen > 0 && blink[blen - 1] == ' ') blen--;
+              blink[blen] = '\0';
+              id(display_blink).publish_state(std::string(blink, blen));
+
+              // Display screens are mutually exclusive per frame; use else-if chains
+              // to skip unrelated checks once the current screen is identified.
+              //
+              // Temperature screens ("Pool Temp", "Spa Temp", "Air Temp"):
+              // Pattern: "Pool Temp 85°F" — parse digits after keyword + whitespace.
+              // Degree symbol '_' was already converted to UTF-8 \xC2\xB0 above;
+              // the digit loop stops naturally at the non-digit byte.
+              // (swilson/aqualogic core.py confirms these three screen names.)
+              if (strstr(text, "Temp")) {
+                const char *p;
+                p = strstr(text, "Pool Temp");
+                if (p) {
+                  p += 9; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(pool_temp).publish_state(v);
+                }
+                p = strstr(text, "Spa Temp");
+                if (p) {
+                  p += 8; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(spa_temp).publish_state(v);
+                }
+                p = strstr(text, "Air Temp");
+                if (p) {
+                  p += 8; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(air_temp).publish_state(v);
+                }
+              // Chlorinator screens ("Pool Chlorinator 65%", "Spa Chlorinator 70%"):
+              // Pattern: digits before '%'. (swilson/aqualogic core.py confirms names.)
+              } else if (strstr(text, "Chlorinator")) {
+                const char *p;
+                p = strstr(text, "Pool Chlorinator");
+                if (p) {
+                  p += 16; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(pool_chlorinator).publish_state(v);
+                }
+                p = strstr(text, "Spa Chlorinator");
+                if (p) {
+                  p += 15; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(spa_chlorinator).publish_state(v);
+                }
+              // Salt level screen ("Salt Level 2400 PPM" or "Salt Level 2.4 g/L"):
+              // Parse digits (and optional decimal point) before the unit word.
+              } else if (strstr(text, "Salt Level")) {
+                const char *p = strstr(text, "Salt Level");
+                if (p) {
+                  p += 10; while (*p == ' ') p++;
+                  float v = 0; bool ok = false;
+                  while (*p >= '0' && *p <= '9') { v = v * 10.0f + float(*p++ - '0'); ok = true; }
+                  if (ok) id(salt_level).publish_state(v);
+                }
+              // Filter speed screen: "Filter Speed Off" or "Filter Speed XX% <reason>"
+              // where reason is a free-form string ("Speed1", "Heater1", "Spa Mode", etc.).
+              // Published as the text after the keyword, e.g. "Off", "40% Speed1".
+              } else if (strstr(text, "Filter Speed")) {
+                const char *p = strstr(text, "Filter Speed");
+                p += 12; while (*p == ' ') p++;
+                id(filter_speed_text).publish_state(std::string(p));
+              }
+
+globals:
+  - id: g_led_mask
+    type: uint32_t
+    initial_value: "0"
+
+text_sensor:
+  # Diagnostic: publishes the raw 32-bit LED mask as a hex string on every change.
+  # Use this to discover bit positions without a sniffer: note which hex bits flip
+  # when you activate a known circuit, then map that bit to a led.yaml include.
+  - platform: template
+    id: led_mask_hex
+    name: "LED Mask"
+    entity_category: diagnostic
+    disabled_by_default: true
+
+  # Display text sensors receive values from the on_frame: [0x01, 0x03] handler.
+  - platform: template
+    id: display_text
+    name: "Display"
+
+  - platform: template
+    id: display_blink
+    name: "Display Blink"
+    # Non-empty string when any character on the display is blinking.
+    # Automations can trigger on state != "" to detect alarms or mode changes.
+
+  - platform: template
+    id: filter_speed_text
+    name: "Filter Speed"
+    disabled_by_default: true
+    # "Off", "40% Speed1", "65% Heater1", "90% Spa Mode", etc.
+    # The text after "Filter Speed" on the cycling display screen.
+
+sensor:
+  # Temperatures and pool chemistry from the on_frame: [0x01, 0x03] display handler.
+  # state_class: measurement is required by HA for long-term statistics.
+  # Set ${temp_unit} to "°C" (and ${temp_unit_short} to "C") if in Celsius region.
+  #
+  # Pool and Air temperatures are always shown. Spa Temperature, Chlorinator
+  # output, and Salt Level are disabled_by_default — enable them in HA under
+  # Settings > Entities if your system has those features.
+  - platform: template
+    id: pool_temp
+    name: "Pool Temperature"
+    unit_of_measurement: "${temp_unit}"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: spa_temp
+    name: "Spa Temperature"
+    unit_of_measurement: "${temp_unit}"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    disabled_by_default: true
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: air_temp
+    name: "Air Temperature"
+    unit_of_measurement: "${temp_unit}"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: pool_chlorinator
+    name: "Pool Chlorinator"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    disabled_by_default: true
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: spa_chlorinator
+    name: "Spa Chlorinator"
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    disabled_by_default: true
+    filters:
+      - throttle: 10s
+
+  - platform: template
+    id: salt_level
+    name: "Salt Level"
+    unit_of_measurement: "PPM"
+    state_class: measurement
+    accuracy_decimals: 0
+    disabled_by_default: true
+    filters:
+      - throttle: 10s
+
+  # Diagnostic counters from the rs485_frame sensor platform. state_class,
+  # unit_of_measurement, and entity_category (diagnostic) are filled in
+  # automatically per decode value.
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "CRC Failures"
+    decode: crc_failures
+
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Command Drops"
+    decode: command_drops

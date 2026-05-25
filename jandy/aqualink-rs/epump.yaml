@@ -1,0 +1,51 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!  (see bus.yaml)
+# =============================================================================
+# Jandy AquaLink RS — equipment profile: ePump (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1  (see bus.yaml)
+# Owns frames: [0x00,0x1F] ePump status (watts + RPM)
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Variable-speed ePump. Adds to the shared `pool` hub via `id: !extend pool`.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      # ePump status: watts (uint16_be at offset 4), RPM (uint16_be at offset 6).
+      - frame_type: [0x00, 0x1F]
+        then:
+          - lambda: |-
+              if (payload.size() < 8) return;
+              uint16_t watts = (uint16_t(payload[4]) << 8) | payload[5];
+              uint16_t rpm = (uint16_t(payload[6]) << 8) | payload[7];
+              id(epump_watts).publish_state(float(watts));
+              id(epump_rpm).publish_state(float(rpm));
+
+sensor:
+  - platform: template
+    id: epump_watts
+    name: "ePump Watts"
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 5s
+
+  - platform: template
+    id: epump_rpm
+    name: "ePump RPM"
+    unit_of_measurement: RPM
+    state_class: measurement
+    accuracy_decimals: 0
+    filters:
+      - throttle: 5s

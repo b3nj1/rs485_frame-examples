@@ -1,0 +1,108 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!  (see bus.yaml)
+# =============================================================================
+# Jandy AquaLink RS — equipment profile: panel LEDs + display (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1  (see bus.yaml)
+# Owns frames: [0x08,0x02] LED status; [0x08,0x03] display message
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Panel LED state and display text for the AllButton at address 0x08. Change the
+# frame_type address bytes if your AllButton lives at 0x09..0x0B. Adds to the
+# shared `pool` hub via `id: !extend pool`.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      # LED status frame: 2 bits/LED (bit 0 = ON, bit 1 = FLASH).
+      - frame_type: [0x08, 0x02]
+        then:
+          - lambda: |-
+              if (payload.size() < 7) return;
+              id(led_filter_pump).publish_state(bool((payload[2] >> 0) & 1));  // LED 0
+              id(led_spa).publish_state(bool((payload[2] >> 2) & 1));          // LED 1
+              id(led_aux1).publish_state(bool((payload[2] >> 4) & 1));         // LED 2
+              id(led_aux2).publish_state(bool((payload[2] >> 6) & 1));         // LED 3
+              id(led_aux3).publish_state(bool((payload[3] >> 0) & 1));         // LED 4
+              id(led_aux4).publish_state(bool((payload[3] >> 2) & 1));         // LED 5
+              id(led_pool_heater).publish_state(bool((payload[5] >> 4) & 1));  // LED 14
+              id(led_spa_heater).publish_state(bool((payload[6] >> 0) & 1));   // LED 16
+
+      # Display message frame: ASCII to the AllButton.
+      - frame_type: [0x08, 0x03]
+        then:
+          - lambda: |-
+              if (payload.size() < 3) return;
+              // BUF_LEN sized generously to cover any AllButton/OneTouch display
+              // variant and iAqualinkTouch panels. static: BSS-allocated once at
+              // program start -- no per-call stack or heap.
+              const size_t BUF_LEN = 128;
+              static char text[BUF_LEN];
+              uint8_t tlen = 0;
+              for (size_t i = 2; i < payload.size() && tlen < (BUF_LEN - 1); i++) {
+                uint8_t b = payload[i];
+                if (b == 0 || b == ' ') {
+                  if (tlen > 0 && text[tlen - 1] != ' ')
+                    text[tlen++] = ' ';
+                } else if (b >= 0x20 && b < 0x7F) {
+                  text[tlen++] = char(b);
+                }
+              }
+              while (tlen > 0 && text[tlen - 1] == ' ') tlen--;
+              id(pool_display).publish_state(std::string(text, tlen));
+
+binary_sensor:
+  # LED state mirrors. device_class is set so HA picks the right icon and avoids
+  # the "missing device_class" warning for status binary sensors.
+  - platform: template
+    id: led_filter_pump
+    name: "Filter Pump"
+    device_class: running
+
+  - platform: template
+    id: led_spa
+    name: "Spa"
+    device_class: running
+
+  - platform: template
+    id: led_aux1
+    name: "Aux 1"
+    device_class: running
+
+  - platform: template
+    id: led_aux2
+    name: "Aux 2"
+    device_class: running
+
+  - platform: template
+    id: led_aux3
+    name: "Aux 3"
+    device_class: running
+
+  - platform: template
+    id: led_aux4
+    name: "Aux 4"
+    device_class: running
+
+  - platform: template
+    id: led_pool_heater
+    name: "Pool Heater"
+    device_class: running
+
+  - platform: template
+    id: led_spa_heater
+    name: "Spa Heater"
+    device_class: running
+
+text_sensor:
+  - platform: template
+    id: pool_display
+    name: "Pool Display"
