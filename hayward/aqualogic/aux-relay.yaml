@@ -1,0 +1,75 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — equipment profile: AUX relay (template)
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic; ESP32-S3; ESPHome 2026.6.0-dev;
+#              rs485_frame @ github://b3nj1/esphome@rs485_frame
+# Bus:         19200 baud, 8N2  (see bus.yaml)
+# Owns frames: [0x01,0x02] one solid-LED bit per channel; one command per channel
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/swilson/aqualogic
+#
+# Contributors:
+#   - b3nj1 (@b3nj1) — capture, decode, packaging
+#   - swilson (https://github.com/swilson/aqualogic) — reverse-engineering
+# =============================================================================
+#
+# ONE AUX relay channel, parameterized via vars. Include it once per channel you
+# have, each with its own vars. It adds to the shared `pool` hub via
+# `id: !extend pool`.
+#
+# Required vars:
+#   n     — channel number (must be unique; forms entity id aux_<n>_running)
+#   label — entity name shown in Home Assistant (e.g. "Blower", "UV")
+#   cmd   — 32-bit command word that toggles this relay (e.g. "0x00020000")
+#   bit   — solid-LED bit position in the [0x01,0x02] mask (0-31)
+#
+# Optional vars:
+#   device_class — Home Assistant device class (default: "running")
+#
+# Complete AUX map (verified on hardware + community reverse-engineering):
+#   { n: 1,  label: "AUX 1",  cmd: "0x00020000", bit: 7  }
+#   { n: 2,  label: "AUX 2",  cmd: "0x00040000", bit: 8  }
+#   { n: 3,  label: "AUX 3",  cmd: "0x00000800", bit: 9  }
+#   { n: 4,  label: "AUX 4",  cmd: "0x00001000", bit: 10 }
+#   { n: 5,  label: "AUX 5",  cmd: "0x00002000", bit: 11 }
+#   { n: 6,  label: "AUX 6",  cmd: "0x00004000", bit: 12 }
+#   { n: 7,  label: "AUX 7",  cmd: "0x00008000", bit: 13 }
+#   { n: 8,  label: "AUX 8",  cmd: "0x00080000", bit: 14 }
+#   { n: 9,  label: "AUX 9",  cmd: "0x00100000", bit: 15 }
+#
+# Remote git form (in the device config's files: list):
+#   - path: hayward/aqualogic/aux-relay.yaml
+#     vars: { n: 1, label: "AUX 1", cmd: "0x00020000", bit: 7 }
+# Local-copy form:
+#   aux1: !include { file: aux-relay.yaml, vars: { n: 1, label: "AUX 1", cmd: "0x00020000", bit: 7 } }
+
+defaults:
+  n: 1
+  label: AUX 1
+  cmd: "0x00020000"
+  bit: 7
+  device_class: running
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      - frame_type: [0x01, 0x02]
+        then:
+          - lambda: |-
+              if (payload.size() < 6) return;
+              uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
+                              (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
+              id(aux_${n}_running).publish_state(bool(mask & (1UL << ${bit})));
+
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "${label}"
+    command: ${cmd}
+
+binary_sensor:
+  - platform: template
+    id: aux_${n}_running
+    name: "${label}"
+    device_class: ${device_class}

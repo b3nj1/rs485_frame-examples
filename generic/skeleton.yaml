@@ -1,5 +1,11 @@
 ## Skeleton config for an arbitrary DLE-framed RS485 device.
 ##
+## This is a single, self-contained (monolithic) starting point for a bus you are
+## still reverse-engineering. Once you have decoded a controller, DO NOT ship a
+## forked monolith: split it into a reusable bus package + equipment profiles and
+## a thin device config, following CONTRIBUTING.md. See the hayward/aqualogic/ and
+## jandy/aqualink-rs/ package sets for worked examples.
+##
 ## The hub is configured explicitly here: you set the UART baud/parity/stop bits
 ## yourself and declare every framing/CRC/TX detail in the rs485_frame: block.
 ## This is the right starting point for any device that you have to

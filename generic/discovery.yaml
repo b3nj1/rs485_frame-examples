@@ -1,5 +1,9 @@
 ## Framing/CRC discovery for a COMPLETELY UNKNOWN DLE-framed bus.
 ##
+## Diagnostic/bootstrap tool — monolithic by design and exempt from the package
+## structure (there are no equipment profiles to compose for an unknown bus). Once
+## you know the framing, move on to generic/sniffer.yaml, then package per CONTRIBUTING.md.
+##
 ## Use this first when you do not even know the dle/stx/etx delimiter bytes, the escape
 ## scheme, or the CRC. With discovery: enabled the hub does NO framing, validation, or
 ## transmission -- it passively captures raw bytes, segments them into frames by idle gap,

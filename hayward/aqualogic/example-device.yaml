@@ -1,0 +1,91 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — example device config
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic; ESP32-S3 (Waveshare ESP32-S3-RS485-CAN)
+#
+# Contributors:
+#   - b3nj1 (@b3nj1)
+# =============================================================================
+#
+# HOW TO USE THIS FILE
+#   1. Copy it to your ESPHome configuration directory and rename it (the name
+#      becomes your device's hostname).
+#   2. Fill in the substitutions: below (board, GPIO pins, transmit role).
+#   3. In the packages.rs485.files list, UNCOMMENT the equipment you have and
+#      DELETE the rest. The bus.yaml line is REQUIRED — leave it uncommented.
+#   4. Add wifi_ssid / wifi_password to your secrets.yaml (remote packages cannot
+#      contain !secret, so wifi/api/ota stay in this file).
+#   5. Flash. Start with hayward/sniffer.yaml first if you want to confirm the
+#      bus is visible before sending commands.
+#
+# To update to a newer release, bump packages.rs485.ref to a newer tag. To edit a
+# decoder, copy the package files locally and switch to local !include (see README).
+
+substitutions:
+  name: aqualogic
+  friendly_name: AquaLogic
+  board: esp32-s3-devkitc-1   # see https://esphome.io/components/esp32 for the full list
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  flow_control_pin: GPIO21
+  # Transmit role (see bus.yaml header). Wireless is the recommended default and
+  # never collides with the physical main panel. Override for wired roles:
+  #   wireless [0x00, 0x83, 0x01] | wired remote [0x00, 0x03, 0x01]
+  #   wired local [0x00, 0x02, 0x01] | other unit-address e.g. [0x00, 0x04]
+  cmd_preamble: [0x00, 0x83, 0x01]
+  # Temperature units: set to °C / C if in Celsius region
+  temp_unit: "°F"
+  temp_unit_short: "F"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+# ESP-IDF is recommended: it enables hardware RS485 half-duplex mode on the UART
+# peripheral, driving the DE/RE direction pin at the shift-register level without
+# software guard times. Arduino-framework users must use an auto-DE transceiver
+# chip (e.g. MAX13487, MAX22025) instead.
+esp32:
+  board: ${board}
+  framework:
+    type: esp-idf
+
+logger:
+api:
+ota:
+  platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+packages:
+  rs485:
+    url: https://github.com/b3nj1/rs485_frame-examples
+    ref: v1.0.0          # PINNED release tag — bump deliberately to update (see README)
+    refresh: 1d
+    files:
+      # Bus package is REQUIRED and stays uncommented.
+      # NOTE: bus.yaml also includes panel-wide sensors that are disabled_by_default
+      # in Home Assistant: Spa Temperature, Pool/Spa Chlorinator %, Salt Level, and
+      # Service button. Enable them individually in HA > Settings > Entities if your
+      # system has those features.
+      - hayward/aqualogic/bus.yaml
+      # --- Equipment: uncomment the lines for gear you have, delete the rest. ---
+      # - hayward/aqualogic/pump-vsp.yaml        # Variable-speed pump — Status: tested
+      # - hayward/aqualogic/heater.yaml          # Gas/heat-pump heater — Status: tested
+      # - hayward/aqualogic/lights.yaml          # Pool/spa lights — Status: tested
+      # --- AUX relays: one entry per channel. Copy and customize as needed. ---
+      # Rename label to match what your load actually is (e.g., "Blower", "UV Light").
+      # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
+      # - path: hayward/aqualogic/aux-relay.yaml
+      #   vars: { n: 1, label: "AUX 1", cmd: "0x00020000", bit: 7 }
+      # - path: hayward/aqualogic/aux-relay.yaml
+      #   vars: { n: 2, label: "AUX 2", cmd: "0x00040000", bit: 8 }
+      # - path: hayward/aqualogic/aux-relay.yaml
+      #   vars: { n: 3, label: "AUX 3", cmd: "0x00000800", bit: 9 }
+      # --- Valve switches: one entry per valve. Copy and customize as needed. ---
+      # - path: hayward/aqualogic/valve.yaml
+      #   vars: { n: 3, label: "Valve 3", cmd: "0x00000100", bit: 19 }
+      # - path: hayward/aqualogic/valve.yaml
+      #   vars: { n: 4, label: "Valve 4", cmd: "0x00000200", bit: 20 }

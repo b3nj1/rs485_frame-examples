@@ -4,6 +4,16 @@ A real-world bring-up capture from a Hayward (Goldline) AquaLogic controller, wa
 "I know nothing about this bus" to decoded frames. Every CRC below is verified by hand so you can
 follow the same steps on your own controller.
 
+## Contributors
+
+Credit everyone who captured, reverse-engineered, or verified this data. Add yourself when you
+extend it.
+
+| Contributor | Contribution | Link |
+|---|---|---|
+| b3nj1 (@b3nj1) | Capture, baud sweep, CRC verification, frame decode | https://github.com/b3nj1 |
+| swilson | Hayward wireless-remote frame layout and key encoding | https://github.com/swilson/aqualogic |
+
 ## Capture metadata
 
 | | |
@@ -16,8 +26,10 @@ follow the same steps on your own controller.
 | RF base software | r3.00, ID `6DCC` |
 | Board | Waveshare ESP32-S3-RS485-CAN (ESP32-S3) |
 | ESPHome | 2026.5.1 |
+| rs485_frame | github://b3nj1/esphome@rs485_frame |
 | Bus | 19200 baud, 8 data bits (parity/stop determined separately — see below) |
 | Date | 2026-05-29 |
+| Status | tested-on-hardware |
 
 > The firmware revisions above come from the controller's on-panel **Diagnostic** screen. They
 > also appear on the wire in frame type `0x0004` — see [Version / ID frame](#version--id-frame-0x0004).

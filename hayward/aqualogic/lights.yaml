@@ -1,0 +1,41 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — equipment profile: lights
+# -----------------------------------------------------------------------------
+# Status:      tested-on-hardware
+# Tested on:   Hayward AquaLogic / ProLogic; ESP32-S3; ESPHome 2026.6.0-dev;
+#              rs485_frame @ github://b3nj1/esphome@rs485_frame
+# Bus:         19200 baud, 8N2  (see bus.yaml)
+# Owns frames: [0x01,0x02] bit 6 (lights LED); Lights command 0x00010000
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/swilson/aqualogic
+#
+# Contributors:
+#   - b3nj1 (@b3nj1) — capture, decode, packaging
+# =============================================================================
+#
+# Pool/spa lights. Reads only the lights LED (bit 6) from the shared panel LED
+# frame and adds the Lights button. Adds to the shared `pool` hub via
+# `id: !extend pool`.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      - frame_type: [0x01, 0x02]
+        then:
+          - lambda: |-
+              if (payload.size() < 6) return;
+              uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
+                              (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
+              id(led_lights).publish_state(bool(mask & (1UL << 6)));
+
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "Lights"
+    command: 0x00010000
+
+binary_sensor:
+  - platform: template
+    id: led_lights
+    name: "Lights"
+    device_class: light

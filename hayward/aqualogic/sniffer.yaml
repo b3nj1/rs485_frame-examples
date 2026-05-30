@@ -1,3 +1,7 @@
+## Passive Hayward AquaLogic sniffer — a self-contained diagnostic tool, not part
+## of the package structure. Use it to confirm the bus is visible and watch the
+## display before flashing example-device.yaml. Stays monolithic by design.
+
 esphome:
   name: aqualogic-sniffer
   friendly_name: AquaLogic Sniffer

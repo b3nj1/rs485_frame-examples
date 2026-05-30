@@ -1,0 +1,33 @@
+# =============================================================================
+# !!! UNTESTED / SPECULATIVE DRAFT — USE ENTIRELY AT YOUR OWN RISK !!!  (see bus.yaml)
+# =============================================================================
+# Jandy AquaLink RS — equipment profile: heater (UNTESTED DRAFT)
+# -----------------------------------------------------------------------------
+# Status:      UNTESTED-draft
+# Tested on:   (none — community reverse-engineering only)
+# Bus:         9600 baud, 8N1  (see bus.yaml)
+# Owns frames: [0x00,0x0D] heater error code
+# Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
+# References:  https://github.com/earlephilhower/aquaweb/blob/master/protocol.md
+#
+# Contributors:
+#   - earlephilhower (https://github.com/earlephilhower/aquaweb) — protocol reverse-engineering
+#   - jmehan wiki contributors — protocol documentation
+# =============================================================================
+#
+# Heater error reporting. Adds to the shared `pool` hub via `id: !extend pool`.
+
+rs485_frame:
+  - id: !extend pool
+    on_frame:
+      - frame_type: [0x00, 0x0D]
+        then:
+          - lambda: |-
+              if (payload.size() < 7) return;
+              id(heater_error).publish_state(payload[6] == 0x10);
+
+binary_sensor:
+  - platform: template
+    id: heater_error
+    name: "Heater Error"
+    device_class: problem

@@ -1,3 +1,9 @@
+## Passive frame-type sniffer for a DLE-framed bus once you know its framing.
+##
+## Diagnostic/bootstrap tool — monolithic by design and exempt from the package
+## structure. Run generic/discovery.yaml first if you don't know the framing bytes;
+## once you have decoded the bus, package it per CONTRIBUTING.md.
+
 esphome:
   name: aqualogic-sniffer
   friendly_name: AquaLogic Sniffer
