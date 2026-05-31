@@ -126,7 +126,7 @@ packages:
       - path: hayward/aqualogic/button.yaml
         vars: { button_name: "Filter", button_command: "0x80000000" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Pool/Spa Mode", button_command: "0x40000000" }
+        vars: { button_name: "Pool Spa Mode", button_command: "0x40000000" }
       - path: hayward/aqualogic/button.yaml
         vars: { button_name: "Plus", button_command: "0x20000000" }
       - path: hayward/aqualogic/button.yaml
