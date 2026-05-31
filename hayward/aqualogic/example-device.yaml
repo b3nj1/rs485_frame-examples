@@ -12,8 +12,9 @@
 #   1. Copy it to your ESPHome configuration directory and rename it (the name
 #      becomes your device's hostname).
 #   2. Fill in the substitutions: below (board, GPIO pins, transmit role).
-#   3. In the packages.rs485.files list, UNCOMMENT the equipment you have and
-#      DELETE the rest. The bus.yaml line is REQUIRED — leave it uncommented.
+#   3. In the packages.rs485.files list, UNCOMMENT the equipment and LEDs you
+#      have and DELETE the rest. The bus.yaml line is REQUIRED — leave it
+#      uncommented.
 #   4. Add wifi_ssid / wifi_password to your secrets.yaml (remote packages cannot
 #      contain !secret, so wifi/api/ota stay in this file).
 #   5. Flash. Start with hayward/sniffer.yaml first if you want to confirm the
@@ -29,11 +30,17 @@ substitutions:
   tx_pin: GPIO17
   rx_pin: GPIO18
   flow_control_pin: GPIO21
-  # Transmit role (see bus.yaml header). Wireless is the recommended default and
-  # never collides with the physical main panel. Override for wired roles:
-  #   wireless [0x00, 0x83, 0x01] | wired remote [0x00, 0x03, 0x01]
-  #   wired local [0x00, 0x02, 0x01] | other unit-address e.g. [0x00, 0x04]
-  cmd_preamble: [0x00, 0x83, 0x01]
+  # Transmit role — change the TWO lines below together (preamble + postamble):
+  #   Wireless (recommended, never collides with main panel):
+  #     cmd_preamble: "[0x00, 0x83, 0x01]"   cmd_postamble: "[0x00]"
+  #   Wired remote (frame type 0x0003):
+  #     cmd_preamble: "[0x00, 0x03]"           cmd_postamble: "[]"
+  #   Wired local / main panel (frame type 0x0002, collision risk):
+  #     cmd_preamble: "[0x00, 0x02]"           cmd_postamble: "[]"
+  cmd_preamble: "[0x00, 0x83, 0x01]"   # wireless default
+  cmd_postamble: "[0x00]"              # wireless trailing pad; wired uses []
+  # cmd_size / cmd_endian / cmd_repeat: leave at bus.yaml defaults (4, big, 2)
+  # unless you have a custom protocol.
   # Temperature units: set to °C / C if in Celsius region
   temp_unit: "°F"
   temp_unit_short: "F"
@@ -66,26 +73,93 @@ packages:
     refresh: 1d
     files:
       # Bus package is REQUIRED and stays uncommented.
-      # NOTE: bus.yaml also includes panel-wide sensors that are disabled_by_default
-      # in Home Assistant: Spa Temperature, Pool/Spa Chlorinator %, Salt Level, and
-      # Service button. Enable them individually in HA > Settings > Entities if your
-      # system has those features.
       - hayward/aqualogic/bus.yaml
+
       # --- Equipment: uncomment the lines for gear you have, delete the rest. ---
       # - hayward/aqualogic/pump-vsp.yaml        # Variable-speed pump — Status: tested
       # - hayward/aqualogic/heater.yaml          # Gas/heat-pump heater — Status: tested
-      # - hayward/aqualogic/lights.yaml          # Pool/spa lights — Status: tested
-      # --- AUX relays: one entry per channel. Copy and customize as needed. ---
-      # Rename label to match what your load actually is (e.g., "Blower", "UV Light").
+
+      # --- LED indicators — uncomment and rename the bits your system exposes. ---
+      # Use the "LED Mask" diagnostic sensor to discover bit layout without a sniffer.
+      # Bit assignments verified on AquaLogic / ProLogic hardware:
+      - path: hayward/aqualogic/led.yaml
+        vars: { bit: 0, led_name: "Heater Active", device_class: heat }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 2, led_name: "Check System", device_class: problem }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 3, led_name: "Pool Mode", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 4, led_name: "Spa Mode", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 5, led_name: "Filter", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 6, led_name: "Lights", device_class: light }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 7, led_name: "AUX 1", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 8, led_name: "AUX 2", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 9, led_name: "AUX 3", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 10, led_name: "AUX 4", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 11, led_name: "AUX 5", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 12, led_name: "AUX 6", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 13, led_name: "AUX 7", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 14, led_name: "AUX 8", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 15, led_name: "AUX 9", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 16, led_name: "System Off", device_class: problem }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 19, led_name: "Valve 3", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 20, led_name: "Valve 4", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 21, led_name: "Service", device_class: running, disabled_by_default: "true" }
+
+      # --- Buttons: uses the hub's cmd_preamble role by default. ---
+      # System Off must always use the wireless preamble; see inline definition below.
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Filter", button_command: "0x80000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Pool/Spa Mode", button_command: "0x40000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Plus", button_command: "0x20000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Minus", button_command: "0x10000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Menu", button_command: "0x02000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Right", button_command: "0x01000000" }
+      - path: hayward/aqualogic/button.yaml
+        vars: { button_name: "Left", button_command: "0x04000000" }
+      # Service — wired preamble only. Uncomment if your panel has a Service button.
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "Service", button_command: "0x00000008", disabled_by_default: "true" }
+      # AUX relays — one entry per channel. Rename label to match your load.
       # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
-      # - path: hayward/aqualogic/aux-relay.yaml
-      #   vars: { n: 1, label: "AUX 1", cmd: "0x00020000", bit: 7 }
-      # - path: hayward/aqualogic/aux-relay.yaml
-      #   vars: { n: 2, label: "AUX 2", cmd: "0x00040000", bit: 8 }
-      # - path: hayward/aqualogic/aux-relay.yaml
-      #   vars: { n: 3, label: "AUX 3", cmd: "0x00000800", bit: 9 }
-      # --- Valve switches: one entry per valve. Copy and customize as needed. ---
-      # - path: hayward/aqualogic/valve.yaml
-      #   vars: { n: 3, label: "Valve 3", cmd: "0x00000100", bit: 19 }
-      # - path: hayward/aqualogic/valve.yaml
-      #   vars: { n: 4, label: "Valve 4", cmd: "0x00000200", bit: 20 }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 1", button_command: "0x00020000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 2", button_command: "0x00040000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 3", button_command: "0x00000800" }
+
+# System Off always uses the wireless preamble regardless of hub role, because the
+# wired protocol's System Off command behaves differently on some panels. Define it
+# inline with an explicit command_format: so it always sends the wireless encoding.
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "System Off"
+    command: 0x08000000
+    command_format:
+      preamble: [0x00, 0x83, 0x01]
+      command_size: 4
+      command_endian: big
+      command_repeat: 2
+      postamble: [0x00]

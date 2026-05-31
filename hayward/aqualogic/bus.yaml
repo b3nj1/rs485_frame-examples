@@ -24,7 +24,7 @@
 #   - sum16 CRC, header-inclusive on TX
 #   - TX gated on the 0x01 0x01 keep-alive frame
 #   - command_format wrapping each button command with the role preamble
-#     (${cmd_preamble}) + 4-byte command repeated twice + [0x00]
+#     (${cmd_preamble}) + ${cmd_size}-byte command × ${cmd_repeat} + ${cmd_postamble}
 #   - panel-wide entities: nav/mode buttons, display text, and the panel LEDs
 #
 # Equipment profiles (pump-vsp.yaml, heater.yaml, lights.yaml, aux-relay.yaml)
@@ -35,8 +35,8 @@
 # Transmit role is selected by the ${cmd_preamble} substitution in the DEVICE
 # config (one-line edit). Verified roles:
 #   - WIRELESS remote (frame type 0x0083, recommended): [0x00, 0x83, 0x01]
-#   - WIRED REMOTE   (frame type 0x0003):               [0x00, 0x03, 0x01]
-#   - WIRED LOCAL / main panel (0x0002, collision risk):[0x00, 0x02, 0x01]
+#   - WIRED REMOTE   (frame type 0x0003):               [0x00, 0x03]
+#   - WIRED LOCAL / main panel (0x0002, collision risk):[0x00, 0x02]
 #   - other wired unit-address (e.g. unit 3 = 0x04):    [0x00, 0x04]
 #     (0x04 and higher accept only menu / navigation buttons.)
 # The wireless frame type never collides with the physical main panel's own
@@ -48,6 +48,13 @@
 substitutions:
   temp_unit: "°F"       # set to "°C" for Celsius regions
   temp_unit_short: "F"  # set to "C" for Celsius regions
+  # Transmit role (override in your device config — see role table in header above):
+  #   wireless [0x00, 0x83, 0x01] | wired remote [0x00, 0x03] | wired local [0x00, 0x02]
+  cmd_preamble: "[0x00, 0x83, 0x01]"  # wireless default
+  cmd_postamble: "[0x00]"             # wireless trailing pad; wired uses []
+  cmd_size: "4"
+  cmd_endian: "big"
+  cmd_repeat: "2"
 
 # Temporary -- tracks the PR branch. Update the ref to @dev once merged;
 # remove this block entirely once rs485_frame ships in an official ESPHome release.
@@ -90,41 +97,39 @@ rs485_frame:
       max_queue_size: 1
 
     command_format:
-      preamble: ${cmd_preamble}      # role select; see header. Set in the device config.
-      command_size: 4
-      command_endian: big
-      command_repeat: 2
-      postamble: [0x00]
+      preamble: ${cmd_preamble}
+      command_size: ${cmd_size}
+      command_endian: ${cmd_endian}
+      command_repeat: ${cmd_repeat}
+      postamble: ${cmd_postamble}
 
     dump_frames: false
 
     on_frame:
       # -----------------------------------------------------------------------
-      # Panel LED status frame (0x01 0x02) — panel-wide bits only.
+      # Panel LED status frame (0x01 0x02).
       #
       # Payload bytes 2-5: 32-bit little-endian mask of solid-lit LEDs.
       # Confirmed bit positions (solid mask, swilson/aqualogic + live captures):
       #   bit    Status LED
-      #    0     Heater active   
-      #    2     Check System    
+      #    0     Heater active
+      #    2     Check System
       #    3     Pool Mode
-      #    4     Spa Mode     
-      #    6     Lights
+      #    4     Spa Mode
       #    5     Filter
+      #    6     Lights
       #    7     AUX 1
       #    8     AUX 2
       #    9     AUX 3
       #  ...     AUX 4 .. 8
       #   15     AUX 9
-      #   16     System Off      
+      #   16     System Off
       #   19     Valve 3
-      #   20     Valve 4 
+      #   20     Valve 4
       #   21     Service
       #
-      # This handler reads the panel-wide bits: Check System, Pool/Spa Mode,
-      # Filter, and Service. Per-equipment bits are read by their own profiles'
-      # [0x01,0x02] handlers (heater = bit 0, lights = bit 6, AUX = bit 7+,
-      # valves via valve.yaml). The hub fires every matching handler.
+      # Stores the mask in g_led_mask (read by led.yaml polling binary sensors)
+      # and publishes it as hex to the led_mask_hex diagnostic text sensor.
       # -----------------------------------------------------------------------
       - frame_type: [0x01, 0x02]
         then:
@@ -132,12 +137,10 @@ rs485_frame:
               if (payload.size() < 6) return;
               uint32_t mask = uint32_t(payload[2]) | (uint32_t(payload[3]) << 8) |
                               (uint32_t(payload[4]) << 16) | (uint32_t(payload[5]) << 24);
-              id(led_check).publish_state(bool(mask & (1UL << 2)));
-              id(led_pool_mode).publish_state(bool(mask & (1UL << 3)));
-              id(led_spa_mode).publish_state(bool(mask & (1UL << 4)));
-              id(led_filter).publish_state(bool(mask & (1UL << 5)));
-              id(led_system_off).publish_state(bool(mask & (1UL << 16)));
-              id(led_service).publish_state(bool(mask & (1UL << 21)));
+              id(g_led_mask) = mask;
+              char hex_buf[12];
+              snprintf(hex_buf, sizeof(hex_buf), "0x%08X", mask);
+              id(led_mask_hex).publish_state(std::string(hex_buf));
 
       # -----------------------------------------------------------------------
       # Display frame (0x01 0x03) — display text + temperatures.
@@ -261,105 +264,20 @@ rs485_frame:
                 id(filter_speed_text).publish_state(std::string(p));
               }
 
-# Commands are modeled as buttons because they are momentary keypress events on
-# the RS485 bus. The controller decides the resulting state; read it back from
-# the LED binary sensors. Command values confirmed from live bus captures.
-# Panel nav/mode buttons live here; equipment buttons live in their profiles.
-button:
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Filter"
-    command: 0x80000000
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Pool Spa Mode"
-    command: 0x40000000
-
-  # This is only available when using "wireless/remote?" cmd_preamble.
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "System Off"
-    command: 0x08000000
-
-  # Additional modes (from community reverse-engineering, verify on your system):
-  # Some systems have mode buttons beyond Pool/Spa (e.g., Spillover, Waterfall).
-  # Uncomment and customize if your panel has these modes:
-  # - platform: rs485_frame
-  #   rs485_frame_id: pool
-  #   name: "Spillover"
-  #   command: 0x00000001  # VERIFY: community guess, unconfirmed
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Menu"
-    command: 0x02000000
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Plus"
-    command: 0x20000000
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Minus"
-    command: 0x10000000
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Right"
-    command: 0x01000000
-
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Left"
-    command: 0x04000000
-
-  # Service button. Included here because it is a panel-level function, not a
-  # piece of equipment. The LED is disabled_by_default; enable it in HA if your
-  # panel has a Service button and you want to track its state.
-  # This is only available when using "wired/local" cmd_preamble.
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "Service"
-    command: 0x00000008
-
-binary_sensor:
-  # Panel LED state sensors. Values come from the on_frame: [0x01, 0x02] handler
-  # above. device_class is set so HA picks an appropriate icon and avoids the
-  # "missing device_class" warning for status binary sensors.
-  - platform: template
-    id: led_filter
-    name: "Filter"
-    device_class: running
-
-  - platform: template
-    id: led_pool_mode
-    name: "Pool Mode"
-    device_class: running
-
-  - platform: template
-    id: led_spa_mode
-    name: "Spa Mode"
-    device_class: running
-
-  - platform: template
-    id: led_check
-    name: "Check System"
-    device_class: problem
-
-  - platform: template
-    id: led_system_off
-    name: "System Off"
-    device_class: problem
-
-  - platform: template
-    id: led_service
-    name: "Service"
-    device_class: running
-    disabled_by_default: true
+globals:
+  - id: g_led_mask
+    type: uint32_t
+    initial_value: "0"
 
 text_sensor:
+  # Diagnostic: publishes the raw 32-bit LED mask as a hex string on every change.
+  # Use this to discover bit positions without a sniffer: note which hex bits flip
+  # when you activate a known circuit, then map that bit to a led.yaml include.
+  - platform: template
+    id: led_mask_hex
+    name: "LED Mask"
+    entity_category: diagnostic
+
   # Display text sensors receive values from the on_frame: [0x01, 0x03] handler.
   - platform: template
     id: display_text
