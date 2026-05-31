@@ -122,7 +122,6 @@ packages:
       #   vars: { bit: 21, led_name: "Service", device_class: running, disabled_by_default: "true" }
 
       # --- Buttons: uses the hub's cmd_preamble role by default. ---
-      # System Off must always use the wireless preamble; see inline definition below.
       - path: hayward/aqualogic/button.yaml
         vars: { button_name: "Filter", button_command: "0x80000000" }
       - path: hayward/aqualogic/button.yaml
@@ -147,6 +146,14 @@ packages:
       #     disabled_by_default: "true"
       #     btn_preamble: "[0x00, 0x03]"   # wired remote frame type
       #     btn_postamble: "[]"
+      # System Off — always uses the wireless preamble regardless of hub role, because
+      # the wired protocol's System Off behaves differently on some panels.
+      - path: hayward/aqualogic/button.yaml
+        vars:
+          button_name: "System Off"
+          button_command: "0x08000000"
+          btn_preamble: "[0x00, 0x83, 0x01]"   # wireless — do not change
+          btn_postamble: "[0x00]"
       # AUX relays — one entry per channel. Rename label to match your load.
       # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
       # - path: hayward/aqualogic/button.yaml
@@ -155,18 +162,3 @@ packages:
       #   vars: { button_name: "AUX 2", button_command: "0x00040000" }
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "AUX 3", button_command: "0x00000800" }
-
-# System Off always uses the wireless preamble regardless of hub role, because the
-# wired protocol's System Off command behaves differently on some panels. Define it
-# inline with an explicit command_format: so it always sends the wireless encoding.
-button:
-  - platform: rs485_frame
-    rs485_frame_id: pool
-    name: "System Off"
-    command: 0x08000000
-    command_format:
-      preamble: [0x00, 0x83, 0x01]
-      command_size: 4
-      command_endian: big
-      command_repeat: 2
-      postamble: [0x00]

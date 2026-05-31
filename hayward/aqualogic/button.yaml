@@ -4,9 +4,9 @@
 # Include once per button you want to expose in Home Assistant.
 # The button sends the command value through the pool hub using the hub's
 # command_format by default (set via cmd_preamble / cmd_postamble in your
-# device config). To override the wire format for a specific button (e.g.
-# Service, which requires the wired preamble even on a wireless-role hub),
-# pass the btn_preamble / btn_postamble vars in the include entry.
+# device config). To override the wire format for a specific button — e.g.
+# Service (wired preamble only) or System Off (wireless always) — pass the
+# btn_preamble / btn_postamble vars in the include entry.
 #
 # Required vars:
 #   button_name     Friendly name shown in Home Assistant.
@@ -26,8 +26,8 @@
 #   Filter       0x80000000    Pool/Spa Mode  0x40000000
 #   Plus         0x20000000    Menu           0x02000000
 #   Minus        0x10000000    Right          0x01000000
-#   Left         0x04000000    System Off     0x08000000 (wireless only)
-#   Service      0x00000008    (wired local/remote preamble only)
+#   Left         0x04000000    System Off     0x08000000 (always btn_preamble wireless)
+#   Service      0x00000008    (always btn_preamble wired remote)
 #   AUX 1-9: see example-device.yaml for per-relay command values.
 # =============================================================================
 
