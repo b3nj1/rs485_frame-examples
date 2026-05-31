@@ -137,9 +137,16 @@ packages:
         vars: { button_name: "Right", button_command: "0x01000000" }
       - path: hayward/aqualogic/button.yaml
         vars: { button_name: "Left", button_command: "0x04000000" }
-      # Service — wired preamble only. Uncomment if your panel has a Service button.
+      # Service — always uses the wired remote preamble (0x0003 frame type); override
+      # btn_preamble/btn_postamble so this button sends correctly regardless of the hub's
+      # transmit role. Uncomment if your panel has a Service button.
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "Service", button_command: "0x00000008", disabled_by_default: "true" }
+      #   vars:
+      #     button_name: "Service"
+      #     button_command: "0x00000008"
+      #     disabled_by_default: "true"
+      #     btn_preamble: "[0x00, 0x03]"   # wired remote frame type
+      #     btn_postamble: "[]"
       # AUX relays — one entry per channel. Rename label to match your load.
       # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
       # - path: hayward/aqualogic/button.yaml

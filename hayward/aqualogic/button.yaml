@@ -3,12 +3,10 @@
 # -----------------------------------------------------------------------------
 # Include once per button you want to expose in Home Assistant.
 # The button sends the command value through the pool hub using the hub's
-# command_format (set via cmd_preamble / cmd_postamble in your device config).
-#
-# For a button that must always use a specific wire format regardless of the
-# hub's cmd_preamble (e.g. System Off, which must use wireless preamble even
-# on a wired hub), define it inline in your device config with an explicit
-# command_format: block instead of using this package.
+# command_format by default (set via cmd_preamble / cmd_postamble in your
+# device config). To override the wire format for a specific button (e.g.
+# Service, which requires the wired preamble even on a wireless-role hub),
+# pass the btn_preamble / btn_postamble vars in the include entry.
 #
 # Required vars:
 #   button_name     Friendly name shown in Home Assistant.
@@ -16,6 +14,13 @@
 #
 # Optional vars:
 #   disabled_by_default  Whether to hide the entity in HA by default (default: "false").
+#   btn_preamble    Frame-type preamble bytes (YAML list string, e.g. "[0x00, 0x03]").
+#                   Defaults to ${cmd_preamble} (the hub's role preamble).
+#   btn_postamble   Trailing pad bytes (YAML list string, e.g. "[]").
+#                   Defaults to ${cmd_postamble}.
+#   btn_cmd_size    Command payload width in bytes (default: ${cmd_size}, usually "4").
+#   btn_cmd_endian  Byte order: "big" or "little" (default: ${cmd_endian}).
+#   btn_cmd_repeat  Number of times the command payload is repeated (default: ${cmd_repeat}).
 #
 # Command values confirmed from live bus captures:
 #   Filter       0x80000000    Pool/Spa Mode  0x40000000
@@ -30,6 +35,11 @@ defaults:
   button_name: "Pool Button"
   button_command: "0x00000000"
   disabled_by_default: "false"
+  btn_preamble: ${cmd_preamble}
+  btn_postamble: ${cmd_postamble}
+  btn_cmd_size: ${cmd_size}
+  btn_cmd_endian: ${cmd_endian}
+  btn_cmd_repeat: ${cmd_repeat}
 
 button:
   - platform: rs485_frame
@@ -37,3 +47,9 @@ button:
     name: "${button_name}"
     command: ${button_command}
     disabled_by_default: ${disabled_by_default}
+    command_format:
+      preamble: ${btn_preamble}
+      command_size: ${btn_cmd_size}
+      command_endian: ${btn_cmd_endian}
+      command_repeat: ${btn_cmd_repeat}
+      postamble: ${btn_postamble}
