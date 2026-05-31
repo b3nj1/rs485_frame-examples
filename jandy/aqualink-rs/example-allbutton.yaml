@@ -51,6 +51,11 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+# Temporary — tracks the PR branch. Remove once rs485_frame ships in an official ESPHome release.
+external_components:
+  - source: github://b3nj1/esphome@rs485_frame
+    components: [rs485_frame]
+
 packages:
   rs485:
     url: https://github.com/b3nj1/rs485_frame-examples

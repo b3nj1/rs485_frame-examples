@@ -23,11 +23,10 @@
 # tx_pin, rx_pin, flow_control_pin (+ any list-valued substitution like a command
 # preamble — those MUST be defined only in the device file, never defaulted here,
 # because list substitutions concatenate when set in two places).
-
-# Remove this block once rs485_frame ships in an official ESPHome release.
-external_components:
-  - source: github://b3nj1/esphome@rs485_frame
-    components: [rs485_frame]
+#
+# The `external_components:` block (github://b3nj1/esphome@rs485_frame) belongs in
+# the example-device.yaml, NOT here. Users cannot override a package's
+# external_components, and the block will be deleted once rs485_frame is upstream.
 
 uart:
   - id: <hub_id>_uart
