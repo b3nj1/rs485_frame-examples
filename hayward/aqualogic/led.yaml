@@ -13,12 +13,15 @@
 #   device_class        HA device class (default: running).
 #   disabled_by_default Whether to hide the entity in HA by default (default: "false").
 #
-# Known bit assignments (verified on AquaLogic / ProLogic hardware):
-#   0  Heater Active    5  Filter      10  AUX 4    15  AUX 9
-#   2  Check System     6  Lights      11  AUX 5    16  System Off
-#   3  Pool Mode        7  AUX 1       12  AUX 6    19  Valve 3
-#   4  Spa Mode         8  AUX 2       13  AUX 7    20  Valve 4
-#                       9  AUX 3       14  AUX 8    21  Service
+# Known bit assignments (confirmed: swilson, smith288, ChaseDurand; proj hw-tested 0-8):
+#   0  Heater Active     6  Lights      13  AUX 6      20  AUX 10
+#   1  Valve 3           7  AUX 1       14  Valve 4    21  AUX 11
+#   2  Check System      8  AUX 2       15  Spillover  22  AUX 12
+#   3  Pool Mode         9  Service     16  System Off 23  AUX 13
+#   4  Spa Mode         10  AUX 3       17  AUX 7      24  AUX 14
+#   5  Filter*          11  AUX 4       18  AUX 8      25  Super Chlorinate
+#                       12  AUX 5       19  AUX 9
+# * bit 5 flashing (second 4-byte LE word in the LED frame) = pump running at low speed
 #
 # Use the "LED Mask" diagnostic text sensor in bus.yaml to discover your
 # system's bit layout without a sniffer.

@@ -92,7 +92,7 @@ packages:
 
       # --- LED indicators — uncomment and rename the bits your system exposes. ---
       # Use the "LED Mask" diagnostic sensor to discover bit layout without a sniffer.
-      # Bit assignments verified on AquaLogic / ProLogic hardware:
+      # Bits 0-8 hardware-verified. Bits 9-25 confirmed by swilson, smith288, ChaseDurand.
       - path: hayward/aqualogic/led.yaml
         vars: { bit: 0, led_name: "Heater Active", device_class: heat }
       # - path: hayward/aqualogic/led.yaml
@@ -112,21 +112,39 @@ packages:
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 8, led_name: "AUX 2", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 9, led_name: "AUX 3", device_class: running }
+      #   vars: { bit: 9, led_name: "Service", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 10, led_name: "AUX 4", device_class: running }
+      #   vars: { bit: 10, led_name: "AUX 3", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 11, led_name: "AUX 5", device_class: running }
+      #   vars: { bit: 11, led_name: "AUX 4", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 12, led_name: "AUX 6", device_class: running }
+      #   vars: { bit: 12, led_name: "AUX 5", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 13, led_name: "AUX 7", device_class: running }
+      #   vars: { bit: 13, led_name: "AUX 6", device_class: running }
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 14, led_name: "Valve 4", device_class: running }
       # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 15, led_name: "Spillover", device_class: running, disabled_by_default: "true" }
+      # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 16, led_name: "System Off", device_class: problem }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 21, led_name: "Service", device_class: running, disabled_by_default: "true" }
+      #   vars: { bit: 17, led_name: "AUX 7", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 18, led_name: "AUX 8", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 19, led_name: "AUX 9", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 20, led_name: "AUX 10", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 21, led_name: "AUX 11", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 22, led_name: "AUX 12", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 23, led_name: "AUX 13", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 24, led_name: "AUX 14", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 25, led_name: "Super Chlorinate", device_class: running, disabled_by_default: "true" }
 
       # --- Buttons: uses the hub's cmd_preamble role by default. ---
       - path: hayward/aqualogic/button.yaml
@@ -143,15 +161,18 @@ packages:
         vars: { button_name: "Right", button_command: "0x01000000" }
       - path: hayward/aqualogic/button.yaml
         vars: { button_name: "Left", button_command: "0x04000000" }
-      # Service — always uses the wired remote preamble (0x0003 frame type); override
-      # btn_preamble/btn_postamble so this button sends correctly regardless of the hub's
-      # transmit role. Uncomment if your panel has a Service button.
+      # Lights — wireless frame, same role as other panel buttons.
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "Lights", button_command: "0x00010000" }
+      # Service — always uses the wired local preamble (0x0002 frame type) and no postamble;
+      # override btn_preamble/btn_postamble so this button sends correctly regardless of the
+      # hub's transmit role. Uncomment if your panel has a Service button.
       # - path: hayward/aqualogic/button.yaml
       #   vars:
       #     button_name: "Service"
-      #     button_command: "0x00000008"
+      #     button_command: "0x08000000"
       #     disabled_by_default: "true"
-      #     btn_preamble: [0x00, 0x03]   # wired remote frame type — unquoted list
+      #     btn_preamble: [0x00, 0x02]   # wired local frame type — unquoted list
       #     btn_postamble: []
       # System Off — always uses the wireless preamble regardless of hub role, because
       # the wired protocol's System Off behaves differently on some panels.
@@ -162,11 +183,37 @@ packages:
           btn_preamble: [0x00, 0x83, 0x01]   # wireless — do not change
           btn_postamble: [0x00]
       # AUX relays — one entry per channel. Rename label to match your load.
-      # AUX 1-2 tested on hardware; higher AUX numbers from community reverse-engineering, see bus.yaml
+      # AUX 1-2 hardware-tested. AUX 3-7 confirmed by swilson + smith288, not hw-tested.
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "AUX 1", button_command: "0x00020000" }
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "AUX 2", button_command: "0x00040000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 3", button_command: "0x00080000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 4", button_command: "0x00100000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 5", button_command: "0x00200000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 6", button_command: "0x00400000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 7", button_command: "0x00800000" }
+      # AUX 8-14: command bytes shift to a different byte position in the frame; less
+      # certain — verify with the LED Mask diagnostic before relying on these.
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 8",  button_command: "0x00000800" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 9",  button_command: "0x00001000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 10", button_command: "0x00002000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 11", button_command: "0x00004000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 12", button_command: "0x00008000" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 13", button_command: "0x00000001" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "AUX 14", button_command: "0x00000002" }
       # Valve controls — one entry per channel. Rename label to match your load.
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "Valve 3", button_command: "0x00000100" }

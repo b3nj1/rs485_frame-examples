@@ -100,23 +100,34 @@ rs485_frame:
       # Panel LED status frame (0x01 0x02).
       #
       # Payload bytes 2-5: 32-bit little-endian mask of solid-lit LEDs.
-      # Confirmed bit positions (solid mask, swilson/aqualogic + live captures):
+      # Confirmed bit positions (solid mask, swilson + ChaseDurand + live captures):
       #   bit    Status LED
-      #    0     Heater active
+      #    0     Heater 1 active
       #    1     Valve 3
       #    2     Check System
       #    3     Pool Mode
       #    4     Spa Mode
-      #    5     Filter
+      #    5     Filter  (flashing = pump low speed; not exposed by this profile)
       #    6     Lights
       #    7     AUX 1
       #    8     AUX 2
-      #    9     AUX 3
-      #  ...     AUX 4 .. 6
-      #   13     AUX 7
-      #   14     Valve 4
+      #    9     Service
+      #   10     AUX 3
+      #   11     AUX 4
+      #   12     AUX 5
+      #   13     AUX 6
+      #   14     Valve 4 / Heater 2
+      #   15     Spillover
       #   16     System Off
-      #   21     Service
+      #   17     AUX 7
+      #   18     AUX 8
+      #   19     AUX 9
+      #   20     AUX 10
+      #   21     AUX 11
+      #   22     AUX 12
+      #   23     AUX 13
+      #   24     AUX 14
+      #   25     Super Chlorinate
       #
       # Stores the mask in g_led_mask (read by led.yaml polling binary sensors)
       # and publishes it as hex to the led_mask_hex diagnostic text sensor.

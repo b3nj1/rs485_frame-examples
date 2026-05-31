@@ -22,13 +22,14 @@
 #   btn_cmd_endian  Byte order: "big" or "little" (default: ${cmd_endian}).
 #   btn_cmd_repeat  Number of times the command payload is repeated (default: ${cmd_repeat}).
 #
-# Command values confirmed from live bus captures:
+# Command values confirmed from live bus captures and community reverse-engineering:
 #   Filter       0x80000000    Pool/Spa Mode  0x40000000
 #   Plus         0x20000000    Menu           0x02000000
 #   Minus        0x10000000    Right          0x01000000
-#   Left         0x04000000    System Off     0x08000000 (always btn_preamble wireless)
-#   Service      0x00000008    (always btn_preamble wired remote)
-#   AUX 1-9: see example-device.yaml for per-relay command values.
+#   Left         0x04000000    Lights         0x00010000
+#   System Off   0x08000000    (always btn_preamble wireless)
+#   Service      0x08000000    (always btn_preamble wired local [0x00,0x02], btn_postamble [])
+#   AUX 1-14, Valve 3-4: see example-device.yaml for per-relay command values.
 # =============================================================================
 
 defaults:
