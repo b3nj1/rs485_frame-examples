@@ -103,6 +103,7 @@ rs485_frame:
       # Confirmed bit positions (solid mask, swilson/aqualogic + live captures):
       #   bit    Status LED
       #    0     Heater active
+      #    1     Valve 3
       #    2     Check System
       #    3     Pool Mode
       #    4     Spa Mode
@@ -111,11 +112,10 @@ rs485_frame:
       #    7     AUX 1
       #    8     AUX 2
       #    9     AUX 3
-      #  ...     AUX 4 .. 8
-      #   15     AUX 9
+      #  ...     AUX 4 .. 6
+      #   13     AUX 7
+      #   14     Valve 4
       #   16     System Off
-      #   19     Valve 3
-      #   20     Valve 4
       #   21     Service
       #
       # Stores the mask in g_led_mask (read by led.yaml polling binary sensors)
@@ -267,6 +267,7 @@ text_sensor:
     id: led_mask_hex
     name: "LED Mask"
     entity_category: diagnostic
+    disabled_by_default: true
 
   # Display text sensors receive values from the on_frame: [0x01, 0x03] handler.
   - platform: template

@@ -96,6 +96,8 @@ packages:
       - path: hayward/aqualogic/led.yaml
         vars: { bit: 0, led_name: "Heater Active", device_class: heat }
       # - path: hayward/aqualogic/led.yaml
+      #   vars: { bit: 1, led_name: "Valve 3", device_class: running }
+      # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 2, led_name: "Check System", device_class: problem }
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 3, led_name: "Pool Mode", device_class: running }
@@ -120,15 +122,9 @@ packages:
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 13, led_name: "AUX 7", device_class: running }
       # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 14, led_name: "AUX 8", device_class: running }
-      # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 15, led_name: "AUX 9", device_class: running }
+      #   vars: { bit: 14, led_name: "Valve 4", device_class: running }
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 16, led_name: "System Off", device_class: problem }
-      # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 19, led_name: "Valve 3", device_class: running }
-      # - path: hayward/aqualogic/led.yaml
-      #   vars: { bit: 20, led_name: "Valve 4", device_class: running }
       # - path: hayward/aqualogic/led.yaml
       #   vars: { bit: 21, led_name: "Service", device_class: running, disabled_by_default: "true" }
 
@@ -166,10 +162,13 @@ packages:
           btn_preamble: [0x00, 0x83, 0x01]   # wireless — do not change
           btn_postamble: [0x00]
       # AUX relays — one entry per channel. Rename label to match your load.
-      # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
+      # AUX 1-2 tested on hardware; higher AUX numbers from community reverse-engineering, see bus.yaml
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "AUX 1", button_command: "0x00020000" }
       # - path: hayward/aqualogic/button.yaml
       #   vars: { button_name: "AUX 2", button_command: "0x00040000" }
+      # Valve controls — one entry per channel. Rename label to match your load.
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 3", button_command: "0x00000800" }
+      #   vars: { button_name: "Valve 3", button_command: "0x00000100" }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "Valve 4", button_command: "0x00000200" }
