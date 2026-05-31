@@ -104,16 +104,21 @@ A device config must define these substitutions (the bus package references them
 - `flow_control_pin` — DE/RE direction pin (omit only for a passive, never-transmitting base).
 
 Per-vendor optional substitutions (e.g. a transmit-role command preamble, baud overrides) are
-documented in that family's `bus.yaml` header. **Defaults for scalar substitutions live in
-`bus.yaml`**; a device-config value overrides them (scalar substitutions follow last-wins).
+documented in that family's `bus.yaml` header. **Scalar substitutions** follow last-write-wins, so
+defaults for purely scalar knobs (e.g. `temp_unit`) live in `bus.yaml` and are overridden in the
+device config. **Exception: keep logically related knobs together.** All five `command_format` knobs
+(`cmd_preamble`, `cmd_postamble`, `cmd_size`, `cmd_endian`, `cmd_repeat`) live in the device
+config — none are defaulted in `bus.yaml` — so the transmit role is fully self-contained in one
+place and contributors cannot accidentally split it.
 
 **Two substitution gotchas, both verified with `esphome config`:**
 
 1. **List-valued substitutions must be defined in exactly ONE place — the device config.** When the
-   same list substitution is set in both `bus.yaml` and the device config, the two lists
-   *concatenate* (you get `[0x00,0x83,0x01,0x00,0x83,0x01]`, not an override). So a list-valued knob
-   like a command preamble is **required in the device config and must not be defaulted in
-   `bus.yaml`**. Reference it whole-value: `preamble: ${cmd_preamble}`.
+   same list substitution is set in both a package file and the device config, ESPHome
+   *concatenates* the two lists rather than overriding (`[0x00,0x83,0x01,0x00,0x83,0x01]`, not an
+   override). A list-valued knob like a command preamble **must not be defaulted in a package file**;
+   reference it whole-value (`preamble: ${cmd_preamble}`) and require the device config to supply it
+   as an unquoted YAML list: `cmd_preamble: [0x00, 0x83, 0x01]`.
 2. **`${var}` cannot appear inside a YAML flow sequence/mapping.** `preamble: [${cmd_preamble}]` and
    `esphome: { name: ${name} }` fail to parse (the `{` in `${...}` confuses the flow parser). Use
    block style (`esphome:` then `  name: ${name}`) or whole-value substitution (`preamble:
@@ -237,9 +242,11 @@ and users' automations derive from these).
 2. **Single-ref mapping form.** One `remote_package` block (`url:` + `ref:` + `files:`) per device
    config, so the ref lives in one place and the commented menu + aux `vars` entries share it.
 3. **Semver against the interface.** MAJOR = change a path / hub id / substitution / entity
-   id-or-name. MINOR = additive (new profile file, new optional substitution *with a default*, new
-   entity). PATCH = decoder/bugfix. Additive-by-default: within a major line never hard-delete or
-   rename a referenced file or entity, and any new required substitution must ship a default.
+   id-or-name. MINOR = additive (new profile file, new optional scalar substitution with a default,
+   new entity). PATCH = decoder/bugfix. Additive-by-default: within a major line never hard-delete or
+   rename a referenced file or entity; any new required substitution must ship a default if scalar,
+   or be documented as required-in-device-config if list-valued (list defaults in packages
+   concatenate rather than override — see §5).
 4. **`CHANGELOG.md` + migration notes** for every breaking change.
 
 ## 9. `external_components` / staging ref

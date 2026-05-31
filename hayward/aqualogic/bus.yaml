@@ -43,18 +43,14 @@
 # keypress traffic, which is why it is the recommended default.
 # ---------------------------------------------------------------------------
 
-# Default substitutions — override any of these in your device config.
-# Scalars are last-write-wins, so the device config always takes precedence.
+# ESPHome merges substitutions from packages by concatenating list values rather than
+# overriding them. A list-valued default here would double up with the device config's
+# value (e.g. [0x00, 0x83, 0x01] + [0x00, 0x83, 0x01] = 6 bytes, not 3). To keep all
+# command_format knobs in one place and avoid that footgun, ALL five are defined only in
+# the device config — none have defaults here.
 substitutions:
   temp_unit: "°F"       # set to "°C" for Celsius regions
   temp_unit_short: "F"  # set to "C" for Celsius regions
-  # Transmit role (override in your device config — see role table in header above):
-  #   wireless [0x00, 0x83, 0x01] | wired remote [0x00, 0x03] | wired local [0x00, 0x02]
-  cmd_preamble: "[0x00, 0x83, 0x01]"  # wireless default
-  cmd_postamble: "[0x00]"             # wireless trailing pad; wired uses []
-  cmd_size: "4"
-  cmd_endian: "big"
-  cmd_repeat: "2"
 
 uart:
   id: pool_uart

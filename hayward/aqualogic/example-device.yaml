@@ -30,17 +30,22 @@ substitutions:
   tx_pin: GPIO17
   rx_pin: GPIO18
   flow_control_pin: GPIO21
-  # Transmit role — change the TWO lines below together (preamble + postamble):
+  # Command format — all five knobs live here, not in bus.yaml, because ESPHome
+  # concatenates list-valued substitutions from packages instead of overriding them.
+  # Keeping them together avoids that footgun and makes the transmit role self-contained.
+  #
+  # Change preamble + postamble together to switch role:
   #   Wireless (recommended, never collides with main panel):
-  #     cmd_preamble: "[0x00, 0x83, 0x01]"   cmd_postamble: "[0x00]"
+  #     cmd_preamble: [0x00, 0x83, 0x01]   cmd_postamble: [0x00]
   #   Wired remote (frame type 0x0003):
-  #     cmd_preamble: "[0x00, 0x03]"           cmd_postamble: "[]"
+  #     cmd_preamble: [0x00, 0x03]          cmd_postamble: []
   #   Wired local / main panel (frame type 0x0002, collision risk):
-  #     cmd_preamble: "[0x00, 0x02]"           cmd_postamble: "[]"
-  cmd_preamble: "[0x00, 0x83, 0x01]"   # wireless default
-  cmd_postamble: "[0x00]"              # wireless trailing pad; wired uses []
-  # cmd_size / cmd_endian / cmd_repeat: leave at bus.yaml defaults (4, big, 2)
-  # unless you have a custom protocol.
+  #     cmd_preamble: [0x00, 0x02]          cmd_postamble: []
+  cmd_preamble: [0x00, 0x83, 0x01]   # unquoted YAML list — wireless default
+  cmd_postamble: [0x00]              # wireless trailing pad; wired uses []
+  cmd_size: "4"                      # Hayward: always 4-byte command
+  cmd_endian: "big"                  # Hayward: big-endian
+  cmd_repeat: "2"                    # wireless: 2 repeats; wired: 1
   # Temperature units: set to °C / C if in Celsius region
   temp_unit: "°F"
   temp_unit_short: "F"
@@ -150,16 +155,16 @@ packages:
       #     button_name: "Service"
       #     button_command: "0x00000008"
       #     disabled_by_default: "true"
-      #     btn_preamble: "[0x00, 0x03]"   # wired remote frame type
-      #     btn_postamble: "[]"
+      #     btn_preamble: [0x00, 0x03]   # wired remote frame type — unquoted list
+      #     btn_postamble: []
       # System Off — always uses the wireless preamble regardless of hub role, because
       # the wired protocol's System Off behaves differently on some panels.
       - path: hayward/aqualogic/button.yaml
         vars:
           button_name: "System Off"
           button_command: "0x08000000"
-          btn_preamble: "[0x00, 0x83, 0x01]"   # wireless — do not change
-          btn_postamble: "[0x00]"
+          btn_preamble: [0x00, 0x83, 0x01]   # wireless — do not change
+          btn_postamble: [0x00]
       # AUX relays — one entry per channel. Rename label to match your load.
       # AUX 1-12 tested on hardware; higher numbers from community reverse-engineering.
       # - path: hayward/aqualogic/button.yaml

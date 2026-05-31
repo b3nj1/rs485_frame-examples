@@ -14,9 +14,9 @@
 #
 # Optional vars:
 #   disabled_by_default  Whether to hide the entity in HA by default (default: "false").
-#   btn_preamble    Frame-type preamble bytes (YAML list string, e.g. "[0x00, 0x03]").
+#   btn_preamble    Frame-type preamble bytes as an unquoted YAML list (e.g. [0x00, 0x03]).
 #                   Defaults to ${cmd_preamble} (the hub's role preamble).
-#   btn_postamble   Trailing pad bytes (YAML list string, e.g. "[]").
+#   btn_postamble   Trailing pad bytes as an unquoted YAML list (e.g. []).
 #                   Defaults to ${cmd_postamble}.
 #   btn_cmd_size    Command payload width in bytes (default: ${cmd_size}, usually "4").
 #   btn_cmd_endian  Byte order: "big" or "little" (default: ${cmd_endian}).
