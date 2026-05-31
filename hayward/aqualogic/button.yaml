@@ -1,0 +1,39 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — per-button package
+# -----------------------------------------------------------------------------
+# Include once per button you want to expose in Home Assistant.
+# The button sends the command value through the pool hub using the hub's
+# command_format (set via cmd_preamble / cmd_postamble in your device config).
+#
+# For a button that must always use a specific wire format regardless of the
+# hub's cmd_preamble (e.g. System Off, which must use wireless preamble even
+# on a wired hub), define it inline in your device config with an explicit
+# command_format: block instead of using this package.
+#
+# Required vars:
+#   button_name     Friendly name shown in Home Assistant.
+#   button_command  32-bit command value (hex string, e.g. "0x80000000").
+#
+# Optional vars:
+#   disabled_by_default  Whether to hide the entity in HA by default (default: "false").
+#
+# Command values confirmed from live bus captures:
+#   Filter       0x80000000    Pool/Spa Mode  0x40000000
+#   Plus         0x20000000    Menu           0x02000000
+#   Minus        0x10000000    Right          0x01000000
+#   Left         0x04000000    System Off     0x08000000 (wireless only)
+#   Service      0x00000008    (wired local/remote preamble only)
+#   AUX 1-9: see example-device.yaml for per-relay command values.
+# =============================================================================
+
+defaults:
+  button_name: "Pool Button"
+  button_command: "0x00000000"
+  disabled_by_default: "false"
+
+button:
+  - platform: rs485_frame
+    rs485_frame_id: pool
+    name: "${button_name}"
+    command: ${button_command}
+    disabled_by_default: ${disabled_by_default}

@@ -1,0 +1,39 @@
+# =============================================================================
+# Hayward AquaLogic / ProLogic — per-LED binary sensor package
+# -----------------------------------------------------------------------------
+# Include once per bit you want to expose in Home Assistant.
+# The lambda reads g_led_mask (updated by bus.yaml on every [0x01,0x02] frame)
+# and polls it every 250 ms — no on_frame extension or explicit id: needed.
+#
+# Required vars:
+#   bit          Bit position in the 32-bit LED mask (0-31).
+#   led_name     Friendly name shown in Home Assistant.
+#
+# Optional vars:
+#   device_class        HA device class (default: running).
+#   disabled_by_default Whether to hide the entity in HA by default (default: "false").
+#
+# Known bit assignments (verified on AquaLogic / ProLogic hardware):
+#   0  Heater Active    5  Filter      10  AUX 4    15  AUX 9
+#   2  Check System     6  Lights      11  AUX 5    16  System Off
+#   3  Pool Mode        7  AUX 1       12  AUX 6    19  Valve 3
+#   4  Spa Mode         8  AUX 2       13  AUX 7    20  Valve 4
+#                       9  AUX 3       14  AUX 8    21  Service
+#
+# Use the "LED Mask" diagnostic text sensor in bus.yaml to discover your
+# system's bit layout without a sniffer.
+# =============================================================================
+
+defaults:
+  bit: 0
+  led_name: "LED 0"
+  device_class: running
+  disabled_by_default: "false"
+
+binary_sensor:
+  - platform: template
+    name: "${led_name}"
+    device_class: ${device_class}
+    disabled_by_default: ${disabled_by_default}
+    lambda: "return bool(id(g_led_mask) & (1UL << ${bit}));"
+    update_interval: 250ms
