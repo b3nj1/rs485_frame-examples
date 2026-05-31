@@ -36,4 +36,4 @@ binary_sensor:
     device_class: ${device_class}
     disabled_by_default: ${disabled_by_default}
     lambda: "return bool(id(g_led_mask) & (1UL << ${bit}));"
-    update_interval: 250ms
+    update_interval: 100ms
