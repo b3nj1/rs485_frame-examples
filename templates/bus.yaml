@@ -46,7 +46,7 @@ rs485_frame:
       escape:
         mode: double          # TODO: double (DLE DLE) or escape_byte + byte: 0xNN
     crc:
-      type: crc16_modbus      # TODO: none | sum8 | sum16 | xor8 | crc16_modbus
+      type: crc16_modbus      # TODO: none | sum8 | sum16_big_endian | sum16_little_endian | xor8 | crc16_modbus
       tx_variant: header_inclusive   # TODO: header_inclusive | payload_only
     tx:
       gate:

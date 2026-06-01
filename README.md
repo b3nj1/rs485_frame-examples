@@ -1,8 +1,9 @@
 # RS485 Frame examples
 
 Ready-to-flash ESPHome configurations for pool and spa controllers that use DLE-framed RS485 buses
-(Hayward AquaLogic / ProLogic, Jandy AquaLink RS, and similar). Each configuration builds on the
-[rs485_frame](https://github.com/esphome/esphome) ESPHome component.
+(Hayward AquaLogic / ProLogic, Jandy AquaLink RS, and similar). Each configuration builds on
+the `rs485_frame` ESPHome component (currently on the
+[staging branch](https://github.com/b3nj1/esphome/tree/rs485_frame); see Status note below).
 
 You assemble a config for your system by copying one short **device config** and listing the
 equipment you actually have — no hand-editing of decoder C++. If you want to *add* support for a new
@@ -20,10 +21,10 @@ official ESPHome release, that block goes away.
 ### Recommended: Waveshare ESP32-S3-RS485-CAN
 
 The ~$20 USD direct / ~$25 on Amazon
-[Waveshare ESP32-S3-RS485-CAN](https://www.waveshare.com/esp32-s3-rs485-can.htm) (a direct link for
-your convenience; I am not an affiliate and receive no compensation) is a near-turnkey option: it
-integrates an ESP32-S3 with a built-in RS485 transceiver and can be powered directly from the Hayward
-AquaLogic / ProLogic RS485 header, so no separate power supply or adapter is needed.
+[Waveshare ESP32-S3-RS485-CAN](https://www.waveshare.com/esp32-s3-rs485-can.htm) (not an affiliate
+link) is a near-turnkey option: it integrates an ESP32-S3 with a built-in RS485 transceiver and can
+be powered directly from the Hayward AquaLogic / ProLogic RS485 header, so no separate power supply
+or adapter is needed.
 
 **Hayward AquaLogic / ProLogic RS485 header wiring:**
 
@@ -62,15 +63,17 @@ GPIO18 --> RO  (RX)
 ## Quick start: assemble your device config
 
 Each controller family ships an `example-device.yaml` — a runnable, fully commented **menu** of every
-profile available for that controller. Assembling your config is the same five steps every time:
+profile available for that controller. **Pick yours from [Available configurations](#available-configurations)
+below first** (Jandy owners: both Jandy files are currently UNTESTED). Then assemble it in the same five
+steps every time:
 
 1. **Copy** the family's `example-device.yaml` into your ESPHome directory and rename it (the name
    becomes your device's hostname).
 2. **Fill in `substitutions:`** — `board`, the UART pins, and any family-specific knob (e.g. Hayward's
    transmit role `cmd_preamble`).
 3. **Uncomment the equipment you have** in the `packages.rs485.files` list and **delete the rest**.
-   The `bus.yaml` line is required — leave it uncommented. For AUX relays, add one `path:` + `vars:`
-   entry per channel.
+   The `bus.yaml` line is required — leave it uncommented. Each AUX channel is a `button.yaml` entry
+   (the command) and/or a `led.yaml` entry (the status light); the menu shows the pairing.
 4. **Add your secrets** — `wifi_ssid` / `wifi_password` to `secrets.yaml`. (Remote packages cannot
    contain `!secret`, so `wifi`/`api`/`ota` stay in the device file.)
 5. **Flash.** Start with the family's sniffer or the passive config to confirm the bus is visible
@@ -100,7 +103,7 @@ One row per controller family; per-profile descriptions and status live in that 
 
 | Controller family | Device config | Status |
 |---|---|---|
-| Hayward AquaLogic / ProLogic | [hayward/aqualogic/example-device.yaml](hayward/aqualogic/example-device.yaml) | Tested on hardware (wireless remote emulation, 19200 8N2) |
+| Hayward AquaLogic / ProLogic | [hayward/aqualogic/example-device.yaml](hayward/aqualogic/example-device.yaml) | Core (bus, nav buttons, temps, AUX 1-2) tested on hardware; AUX 3-14 and LED bits 9-25 are community-sourced (see file comments) |
 | Jandy AquaLink RS — passive observer | [jandy/aqualink-rs/example-passive.yaml](jandy/aqualink-rs/example-passive.yaml) | **UNTESTED draft** |
 | Jandy AquaLink RS — active AllButton emulator | [jandy/aqualink-rs/example-allbutton.yaml](jandy/aqualink-rs/example-allbutton.yaml) | **UNTESTED draft — transmits** |
 
@@ -151,7 +154,13 @@ The protocol decoders build on community reverse engineering of the Hayward and 
 
 - **Hayward AquaLogic wireless remote** — frame layout and key encoding from
   [swilson/aqualogic](https://github.com/swilson/aqualogic).
+- **Hayward AquaLogic LED bit table and command encoding** — confirmed against
+  [smith288](https://github.com/smith288),
+  [stoehrmark](https://github.com/stoehrmark), and
+  [ChaseDurand/Pool-Pi](https://github.com/ChaseDurand/Pool-Pi).
 - **Jandy AquaLink RS envelope format** (`DLE STX <data> <checksum> DLE ETX`) —
   [Jandy Pool Heater wiki](https://wiki.jmehan.com/display/KNOW/Jandy+Pool+Heater).
 - **Jandy AllButton frame catalog, device addresses, and ACK byte sequence** —
   [earlephilhower/aquaweb](https://github.com/earlephilhower/aquaweb/blob/master/protocol.md).
+- **Jandy AqualinkD** — extended equipment catalog (ePump, SWG, heater setpoint) from
+  [aqualinkd/AqualinkD](https://github.com/aqualinkd/AqualinkD).

@@ -21,15 +21,15 @@
 # This is the shared RS485 hub for the Hayward AquaLogic / ProLogic family. It
 # is REQUIRED by every device config and owns everything the bus needs:
 #   - UART 19200 8N2
-#   - sum16 CRC, header-inclusive on TX
+#   - sum16_big_endian CRC, header-inclusive on TX
 #   - TX gated on the 0x01 0x01 keep-alive frame
 #   - command_format wrapping each button command with the role preamble
 #     (${cmd_preamble}) + ${cmd_size}-byte command × ${cmd_repeat} + ${cmd_postamble}
 #   - panel-wide entities: nav/mode buttons, display text, and the panel LEDs
 #
-# Equipment profiles (pump-vsp.yaml, heater.yaml, lights.yaml, aux-relay.yaml)
-# add to this hub with `id: !extend pool` — they MUST NOT redefine uart/framing/
-# crc. See CONTRIBUTING.md.
+# Equipment profiles (pump-vsp.yaml, heater.yaml) and per-button/per-LED templates
+# (button.yaml, led.yaml) add to this hub with `id: !extend pool` — they MUST NOT
+# redefine uart/framing/crc. See CONTRIBUTING.md.
 #
 # ---------------------------------------------------------------------------
 # Transmit role is selected by the ${cmd_preamble} substitution in the DEVICE
@@ -76,7 +76,7 @@ rs485_frame:
         mode: escape_byte   # Hayward stuffs a literal DLE as DLE + the byte below
         byte: 0x00
     crc:
-      type: sum16
+      type: sum16_big_endian
       tx_variant: header_inclusive
 
     tx:

@@ -17,9 +17,10 @@ Initial released interface. Restructured the monolithic per-controller YAMLs int
 
 ### Added
 
-- `hayward/aqualogic/`: `bus.yaml` (hub: UART 19200 8N2, sum16 CRC, gate `[0x01,0x01]`, wireless
-  `command_format`, panel LEDs + display + diagnostics), `pump-vsp.yaml`, `heater.yaml`,
-  `lights.yaml`, `aux-relay.yaml` (per-channel template), and `example-device.yaml`.
+- `hayward/aqualogic/`: `bus.yaml` (hub: UART 19200 8N2, sum16_big_endian CRC, gate `[0x01,0x01]`,
+  wireless `command_format`, panel LEDs + display + diagnostics + service button), `pump-vsp.yaml`,
+  `heater.yaml`, `button.yaml` (parameterized nav/AUX buttons), `led.yaml` (parameterized LED
+  binary sensor), and `example-device.yaml`.
 - `jandy/aqualink-rs/` (UNTESTED drafts): `bus.yaml` (passive base), `leds-display.yaml`, `swg.yaml`,
   `epump.yaml`, `heater.yaml`, `allbutton.yaml` (active emulator), `example-passive.yaml`,
   `example-allbutton.yaml`.

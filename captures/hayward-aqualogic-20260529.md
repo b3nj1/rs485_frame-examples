@@ -60,8 +60,8 @@ framing at each, and locks onto the best.
 [I][rs485_frame.discovery]: RS485 discovery (cumulative since boot): 337 bursts, 371 frames extracted
 [I][rs485_frame.discovery]:   Framing: DLE=0x10 STX=0x02 ETX=0x03  (confidence 100%, start pair x337, end pair x337 of 337 bursts)
 [I][rs485_frame.discovery]:   Escape: unconfirmed - no in-frame DLE observed in 337 bursts. Capture longer / busier
-[I][rs485_frame.discovery]:   CRC match: sum16 header_inclusive big-endian (unescaped) - 371/371 frames
-[I][rs485_frame.discovery]:   CRC match: sum16 header_inclusive big-endian (raw wire bytes) - 371/371 frames
+[I][rs485_frame.discovery]:   CRC match: sum16_big_endian header_inclusive (unescaped) - 371/371 frames
+[I][rs485_frame.discovery]:   CRC match: sum16_big_endian header_inclusive (raw wire bytes) - 371/371 frames
 [I][rs485_frame.discovery]:   Suggested uart config (from sweep; parity/stop_bits not passively detectable):
 [I][rs485_frame.discovery]:     uart:
 [I][rs485_frame.discovery]:       baud_rate: 19200
@@ -79,7 +79,7 @@ What this run teaches:
 - **Why CRC is the tiebreaker, not framing confidence.** Three candidates reached 100% framing
   confidence: `19200 8`, `19200 7`, and `38400 8`. The delimiter bytes (`10 02 ... 10 03`) survive
   at a wrong data-bit width or a harmonic baud, so confidence alone cannot pick the winner. Only
-  `19200 8` produced bytes whose `sum16` checksum agreed across every frame, so it wins. A wrong
+  `19200 8` produced bytes whose `sum16_big_endian` checksum agreed across every frame, so it wins. A wrong
   baud or data-bit width corrupts the payload, and no checksum can match consistently on garbage.
 - **`19200 7` is the trap.** It framed 128 frames at 100% confidence but matched no CRC — the
   8th data bit was being dropped, corrupting every payload. Without the CRC tiebreak you could
@@ -89,8 +89,8 @@ What this run teaches:
   Start with `escape: {mode: escape_byte, byte: 0x00}` (the known Hayward value); it is a no-op
   until a payload DLE actually appears.
 
-Detected so far: **19200 baud, 8 data bits, DLE=`0x10` STX=`0x02` ETX=`0x03`, CRC = sum16
-header-inclusive big-endian.** Parity and stop bits are not passively detectable; on this
+Detected so far: **19200 baud, 8 data bits, DLE=`0x10` STX=`0x02` ETX=`0x03`, CRC = sum16_big_endian
+header-inclusive.** Parity and stop bits are not passively detectable; on this
 controller they are `NONE` / `2` (8N2), determined later by transmitting (see the README note on
 iterating parity/stop if commands are ignored).
 
@@ -142,7 +142,7 @@ Reading the table:
 ### Verifying the CRC by hand
 
 The sniffer captures the **full unescaped frame**: `frame_type` + data + the 2-byte CRC. The CRC is
-`sum16 header_inclusive big-endian`, i.e. the 16-bit sum of `DLE + STX + every byte shown except
+`sum16_big_endian header_inclusive`, i.e. the 16-bit sum of `DLE + STX + every byte shown except
 the trailing two`, emitted high byte first.
 
 `0101` payload `01 01 00 14`:
@@ -199,7 +199,7 @@ What changed:
   cadence (`d-ref` 6/7/7 ms — it rides immediately behind the keep-alive). This is the remote's
   key/state report. The 4th byte (`00`/`01`/`02`/`04`) tracks the key/state; the `C1`/`C2` byte
   near the end looks like a small rolling counter or source id — left as homework. CRC verifies as
-  sum16: e.g. `00 83 01 02 00 00 00 02 00 00 00 C1` sums (with DLE+STX) to `0x15B` = `01 5B`. ✓
+  sum16_big_endian: e.g. `00 83 01 02 00 00 00 02 00 00 00 C1` sums (with DLE+STX) to `0x15B` = `01 5B`. ✓
 - **`040A` and `0103` are the display.** `0103` is the two-line display text; `040A` is a
   line/cell update carrying the same ASCII (`Settings`, `Lights`, `Aux2`, `Timers`, `Diagnostic`,
   `Configuration`, `Heater1`, `Air Temp 62_F`). As you scroll menus they cycle through many
@@ -234,9 +234,9 @@ CRC that proves you have the byte boundaries right.
 
 1. Put the detected settings into `generic/sniffer.yaml` (or `hayward/sniffer.yaml`): `uart:`
    `19200` / `8`, framing `10/02/03`, `escape: {mode: escape_byte, byte: 0x00}`, `crc:
-   {type: sum16, rx_accept: [header_inclusive]}`.
+   {type: sum16_big_endian, rx_accept: [header_inclusive]}`.
 2. Use `0101` as `tx.gate.frame_type` and `reference_frame_type`.
 3. Write `on_frame:` decoders for the frames you care about — the ASCII display frames first
    (`0103`/`040A`), then the binary state frames (`0083`, `0102`) using the byte positions you
    confirmed against the CRC.
-4. See `hayward/aqualogic.yaml` for a complete worked integration built from exactly this process.
+4. See `hayward/aqualogic/example-device.yaml` for a complete worked integration built from exactly this process.

@@ -13,8 +13,8 @@
 ##
 ## What you must supply:
 ##   - uart: baud rate / parity / stop bits that match your target device
-##   - rs485_frame.crc.type: the CRC algorithm your device uses (sum8, sum16,
-##     xor8, crc16_modbus, or none)
+##   - rs485_frame.crc.type: the CRC algorithm your device uses (sum8, sum16_big_endian,
+##     sum16_little_endian, xor8, crc16_modbus, or none)
 ##   - rs485_frame.tx.gate: how the bus gates writes (frame_trigger with a known
 ##     keep-alive frame_type, idle_gap, or fixed_delay)
 ##   - The frame_type and payload bytes for each command you want to send,
@@ -48,8 +48,8 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-# Temporary -- tracks the PR branch. Update the ref to @dev once merged;
-# remove this block entirely once included in an official ESPHome release.
+# Temporary -- while rs485_frame is unreleased this tracks the staging branch.
+# Remove this block entirely once rs485_frame ships in an official ESPHome release.
 external_components:
   - source: github://b3nj1/esphome@rs485_frame
     components: [rs485_frame]

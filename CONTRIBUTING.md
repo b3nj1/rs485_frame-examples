@@ -36,7 +36,7 @@ Layout: each controller family lives at `vendor/controller-family/` and holds `b
 per equipment profile, and `example-device.yaml` (one per operating mode where relevant, e.g. Jandy
 passive vs. allbutton). Reusable skeletons live in `templates/`; captures in `captures/`.
 
-**File naming:** lowercase, hyphenated, named for the equipment (`pump-vsp.yaml`, `aux-relay.yaml`,
+**File naming:** lowercase, hyphenated, named for the equipment (`pump-vsp.yaml`, `heater.yaml`,
 `leds-display.yaml`). `bus.yaml` and `example-device.yaml` are fixed names.
 
 ## 3. The pluggable unit
@@ -70,7 +70,7 @@ rs485_frame:
   - id: pool
     uart_id: pool_uart
     framing: { escape: { mode: escape_byte, byte: 0x00 } }
-    crc: { type: sum16, tx_variant: header_inclusive }
+    crc: { type: sum16_big_endian, tx_variant: header_inclusive }
     # ...
 ```
 
@@ -90,10 +90,11 @@ merged hub.
 
 **Shared-frame decoding rule.** The hub fires **every** `on_frame` handler whose `frame_type` prefix
 matches a received frame, not just the first. So one frame type can be decoded by several profiles:
-the Hayward LED-mask frame `0x01 0x02` is read by `bus.yaml` (panel bits), `heater.yaml` (bit 0),
-`lights.yaml` (bit 6), and each `aux-relay.yaml` channel — five independent handlers on the same
-frame. **Register one handler per profile, guard only your own bytes/bits, and never assume sole
-ownership of a frame type.**
+the Hayward LED-mask frame `0x01 0x02` is registered by `bus.yaml` (panel bits + display sensors)
+and `heater.yaml` (heater active bit). `led.yaml` does not add an `on_frame` handler; instead it
+polls the `g_led_mask` global that `bus.yaml` updates on every `0x01 0x02` frame. **Register one
+`on_frame` handler per profile, guard only your own bytes/bits, and never assume sole ownership of
+a frame type.**
 
 ## 5. The substitution contract
 
@@ -130,26 +131,26 @@ place and contributors cannot accidentally split it.
 ## 6. Superset handling and role/mode selection
 
 **AUX / VALVE channels — packages-as-template.** Rather than ship a bloated enabled-by-default
-superset, `aux-relay.yaml` defines ONE channel parameterized by `vars`, and the device config lists
-it once per channel:
+superset, the Hayward set splits a channel into two small parameterized templates, each included
+once per channel: `button.yaml` (the command) and `led.yaml` (the status bit). The device config
+lists the ones it has:
 
 ```yaml
 files:
   - hayward/aqualogic/bus.yaml
-  - path: hayward/aqualogic/aux-relay.yaml
-    vars: { n: 1, label: Blower, cmd: "0x00020000", bit: 7 }
-  - path: hayward/aqualogic/aux-relay.yaml
-    vars: { n: 2, label: UV,     cmd: "0x00040000", bit: 8 }
+  - path: hayward/aqualogic/button.yaml
+    vars: { button_name: "AUX 1", button_command: "0x00020000" }
+  - path: hayward/aqualogic/led.yaml
+    vars: { bit: 7, led_name: "AUX 1", device_class: running, disabled_by_default: "true" }
 ```
 
-Each entry adds one button + one `running` binary_sensor + one `on_frame: [0x01,0x02]` handler
-reading `bit ${bit}`. `n` makes the entity id unique (`aux_${n}_running`). For local-copy use the
-`!include` form works the same: `!include { file: aux-relay.yaml, vars: { n: 1, ... } }`. A template
-file may carry a `defaults:` block supplying `vars` not provided by the include.
-
-The simpler **`!remove`-the-superset** alternative also works: ship an `aux-relays.yaml` with N
-channels enabled and let the device config `!remove` the entity ids it lacks. The per-channel
-template is preferred because the device config then names only what exists.
+`button.yaml` adds one button that sends `button_command` through the hub's `command_format`;
+`led.yaml` adds one binary_sensor that polls `g_led_mask` bit `${bit}` (it adds no `on_frame`
+handler — `bus.yaml` maintains the mask). Keeping the command and the status bit as separate
+includes lets a device expose a button with no status LED, or a status LED with no button. For
+local-copy use the `!include` form works the same:
+`!include { file: led.yaml, vars: { bit: 7, led_name: "AUX 1" } }`. A template file may carry a
+`defaults:` block supplying `vars` not provided by the include.
 
 **Vendor role / mode selection.** Prefer a substitution over separate files when the difference is a
 few bytes. Hayward's wireless/wired transmit role is the `${cmd_preamble}` substitution (a one-line
@@ -216,16 +217,9 @@ Community references often strip the frame_type before counting, so their "byte 
 When you publish findings, state the convention explicitly ("offsets are payload-relative:
 `payload[0..1]` = frame_type, data starts at `payload[2]`").
 
-**`on_frame` lambda best practices** (from the hub docs):
-
-- **No heap allocation in the lambda.** Decode into `static`/stack arrays; build one `std::string`
-  only at the `publish_state` call site.
-- **Always guard payload length** before indexing: `if (payload.size() < N) return;`.
-- **Avoid `std::to_string`, `String::format`, and other allocating helpers.** Use `snprintf` into a
-  stack buffer for formatted text.
-- **Decoding multi-byte fields?** ESPHome's [`bytebuffer`](https://esphome.io/components/bytebuffer/)
-  helper gives endian-aware, allocation-free accessors over a byte span.
-- **Don't block.** A long loop or `delay()` stalls every other ESPHome component.
+**`on_frame` lambda best practices** — no heap allocation, always guard `payload.size()` before
+indexing, and never block. The full list with rationale lives on the
+[hub component page](https://esphome.io/components/rs485_frame/); follow it for every decoder.
 
 ## 8a. Versioning and breaking changes
 

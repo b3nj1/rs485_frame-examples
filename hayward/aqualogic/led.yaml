@@ -3,10 +3,10 @@
 # -----------------------------------------------------------------------------
 # Include once per bit you want to expose in Home Assistant.
 # The lambda reads g_led_mask (updated by bus.yaml on every [0x01,0x02] frame)
-# and polls it every 250 ms — no on_frame extension or explicit id: needed.
+# and polls it every 100 ms — no on_frame extension or explicit id: needed.
 #
 # Required vars:
-#   bit          Bit position in the 32-bit LED mask (0-31).
+#   bit          Bit position in the 32-bit LED mask (0-25 defined; 26-31 unused).
 #   led_name     Friendly name shown in Home Assistant.
 #
 # Optional vars:

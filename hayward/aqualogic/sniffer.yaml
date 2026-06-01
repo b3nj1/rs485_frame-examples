@@ -50,11 +50,11 @@ rs485_frame:
     escape:
       mode: escape_byte   # Hayward stuffs a literal DLE as DLE + the byte below
       byte: 0x00
-  # Hayward AquaLogic uses sum16 (header-inclusive) CRC. Frames that fail it are counted
+  # Hayward AquaLogic uses sum16_big_endian (header-inclusive) CRC. Frames that fail it are counted
   # in crc_failures rather than logged. To capture a completely unknown bus instead (log
   # everything, including malformed frames), set crc.type to none.
   crc:
-    type: sum16
+    type: sum16_big_endian
   # sniffer_only hubs never transmit, so no tx.gate.frame_type is needed.
   # dump_frames logs every validated frame as raw hex at DEBUG; useful when you want a
   # full byte stream, but with sniffer_stats below the periodic table is usually all you

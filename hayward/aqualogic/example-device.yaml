@@ -20,8 +20,8 @@
 #      them in Settings > Entities once you know which ones apply to you.
 #   4. Add wifi_ssid / wifi_password to your secrets.yaml (remote packages cannot
 #      contain !secret, so wifi/api/ota stay in this file).
-#   5. Flash. Start with hayward/sniffer.yaml first if you want to confirm the
-#      bus is visible before sending commands.
+#   5. Flash. Start with hayward/aqualogic/sniffer.yaml first if you want to confirm
+#      the bus is visible before sending commands.
 #
 # To update to a newer release, bump packages.rs485.ref to a newer tag. To edit a
 # decoder, copy the package files locally and switch to local !include (see README).
@@ -74,8 +74,8 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-# Temporary — tracks the PR branch. Update the ref to @dev once merged;
-# remove this block entirely once rs485_frame ships in an official ESPHome release.
+# Temporary — while rs485_frame is unreleased this tracks the staging branch.
+# Remove this block entirely once rs485_frame ships in an official ESPHome release.
 external_components:
   - source: github://b3nj1/esphome@rs485_frame
     components: [rs485_frame]
