@@ -85,6 +85,9 @@ rs485_frame:
     # Hayward); explicit here for clarity and so you can swap the reference if you start
     # looking for cadence relative to a different anchor.
     reference_frame_type: [0x01, 0x01]
+    # Hayward display frames pack a blink/inverse attribute flag into bit 7 of each display
+    # byte; strip it before the ASCII gate so characters render instead of '.'.
+    ascii_strip_high_bit: true
 
   # Decode the Hayward display frame (0x01 0x03) into the display_text template sensor.
   # Encoding: bit 7 of each byte = blink flag; '_' = degree symbol (UTF-8).
