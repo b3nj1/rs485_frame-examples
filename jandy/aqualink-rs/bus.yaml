@@ -28,8 +28,8 @@
 # =============================================================================
 #
 # Shared hub for the Jandy AquaLink RS8/RS12/RS16 family. Defaults to a PASSIVE
-# observer (sniffer_only: true) — it never transmits, so no flow_control_pin is
-# needed and DE/RE can be tied to the receive state. Equipment profiles
+# observer (sniffer_only: true). The uart: block (including the optional
+# flow_control_pin) lives in the device config, not here. Equipment profiles
 # (leds-display.yaml, swg.yaml, epump.yaml, heater.yaml) add decoders via
 # `id: !extend pool`; allbutton.yaml converts the hub to an active AllButton
 # emulator. Both example device configs in this directory show the wiring.
@@ -37,19 +37,6 @@
 # escape: the Jandy DLE-stuffing scheme is unverified; escape_byte 0x00 mirrors
 # the Hayward convention and is a guess. If captures show doubled DLEs (10 10),
 # switch to mode: double.
-
-uart:
-  - id: pool_uart
-    # If you receive no data, try swapping tx_pin and rx_pin.
-    tx_pin: ${tx_pin}
-    rx_pin: ${rx_pin}
-    baud_rate: 9600
-    data_bits: 8
-    parity: NONE
-    stop_bits: 1
-    rx_buffer_size: 512
-    # No flow_control_pin in the passive base. allbutton.yaml adds it via
-    # `uart: [{id: !extend pool_uart, flow_control_pin: ${flow_control_pin}}]`.
 
 rs485_frame:
   - id: pool

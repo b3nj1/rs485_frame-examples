@@ -9,6 +9,39 @@ All notable changes to the published configuration interface are documented here
 - **MINOR** — additive: a new profile file, a new optional substitution *with a default*, a new entity.
 - **PATCH** — decoder or bug fix with no interface change.
 
+## [2.0.0] - 2026-06-05
+
+### Changed
+
+- **uart block moved to device config** (breaking for users upgrading from 1.0.0). The `uart:`
+  block is no longer defined inside `hayward/aqualogic/bus.yaml` or `jandy/aqualink-rs/bus.yaml`.
+  It must be declared directly in the device config with `id: pool_uart` (Hayward) or
+  `- id: pool_uart` (Jandy). The family-specific constants (baud rate, data bits, parity,
+  stop bits, rx_buffer_size) belong there too. The `jandy/aqualink-rs/allbutton.yaml`
+  `uart: !extend` for `flow_control_pin` is likewise removed.
+
+- **`substitutions:` now contains all user-facing setup values**: `name`, `friendly_name`,
+  `board`, `tx_pin`, `rx_pin`, and `flow_control_pin` are all declared there as `BOARDXX` /
+  `GPIOXX` placeholders. The `esp32:` and `uart:` blocks reference them via `${...}` and no
+  longer need editing. To omit `flow_control_pin` (auto-direction adapters), delete the
+  substitution and the `flow_control_pin: ${flow_control_pin}` line from the `uart:` block.
+
+- **Placeholder values** changed from literal GPIO numbers and a specific board identifier to
+  `GPIOXX` and `BOARDXX` throughout all config examples, matching the ESPHome documentation
+  convention. ESPHome validation rejects these strings, ensuring users replace them before flash.
+
+### Migration from 1.0.0
+
+1. Add a `uart:` block directly to your device config **before** the `packages:` block, using
+   `id: pool_uart` (Hayward) or `- id: pool_uart` (Jandy). Copy the family-specific baud/parity
+   settings from the updated `example-device.yaml` (or Jandy equivalent).
+2. Move `tx_pin`, `rx_pin`, and `flow_control_pin` into your `substitutions:` block with their
+   real pin values. The `uart:` block references them via `${tx_pin}` etc.
+3. Add `board` to `substitutions:` and change `esp32: board:` to `${board}`.
+4. Bump your package ref to `ref: v2.0.0`.
+
+---
+
 ## [1.0.0] - 2026-05-30
 
 Initial released interface. Restructured the monolithic per-controller YAMLs into composable
@@ -39,4 +72,5 @@ Initial released interface. Restructured the monolithic per-controller YAMLs int
 - `generic/` discovery / sniffer / skeleton remain monolithic bootstrap tools (exempt from the
   package structure) with header notes pointing at it for real integrations.
 
+[2.0.0]: https://github.com/b3nj1/rs485_frame-examples/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/b3nj1/rs485_frame-examples/releases/tag/v1.0.0

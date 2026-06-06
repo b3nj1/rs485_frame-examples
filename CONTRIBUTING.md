@@ -98,19 +98,19 @@ a frame type.**
 
 ## 5. The substitution contract
 
-A device config must define these substitutions (the bus package references them):
-
-- `name`, `friendly_name`, `board` — the ESPHome node identity.
-- `tx_pin`, `rx_pin` — UART pins.
-- `flow_control_pin` — DE/RE direction pin (omit only for a passive, never-transmitting base).
-
-Per-vendor optional substitutions (e.g. a transmit-role command preamble, baud overrides) are
-documented in that family's `bus.yaml` header. **Scalar substitutions** follow last-write-wins, so
-defaults for purely scalar knobs (e.g. `temp_unit`) live in `bus.yaml` and are overridden in the
-device config. **Exception: keep logically related knobs together.** All five `command_format` knobs
-(`cmd_preamble`, `cmd_postamble`, `cmd_size`, `cmd_endian`, `cmd_repeat`) live in the device
-config — none are defaulted in `bus.yaml` — so the transmit role is fully self-contained in one
-place and contributors cannot accidentally split it.
+A device config's `substitutions:` block contains everything the user fills in at setup time:
+`name`, `friendly_name`, `board`, `tx_pin`, `rx_pin`, `flow_control_pin`, and any values packages
+consume via `${...}`. The `esphome:`, `esp32:`, and `uart:` blocks are static templates that
+reference substitutions via `${...}` and should not need editing. The sole exception is
+`flow_control_pin`: if your adapter auto-manages RS485 direction, delete the `flow_control_pin`
+substitution and the `flow_control_pin: ${flow_control_pin}` line from the `uart:` block. Per-vendor substitutions that packages consume (e.g. a
+transmit-role command preamble,
+temperature units) are documented in that family's `bus.yaml` header. **Scalar substitutions**
+follow last-write-wins, so defaults for purely scalar knobs (e.g. `temp_unit`) live in `bus.yaml`
+and are overridden in the device config. **Exception: keep logically related knobs together.** All
+five `command_format` knobs (`cmd_preamble`, `cmd_postamble`, `cmd_size`, `cmd_endian`,
+`cmd_repeat`) live in the device config — none are defaulted in `bus.yaml` — so the transmit role
+is fully self-contained in one place and contributors cannot accidentally split it.
 
 **Two substitution gotchas, both verified with `esphome config`:**
 
@@ -157,8 +157,8 @@ few bytes. Hayward's wireless/wired transmit role is the `${cmd_preamble}` subst
 edit in the device config; verified values are listed in `hayward/aqualogic/bus.yaml`). When the
 difference is structural (passive observer vs. active emulator), use a small profile that **extends**
 the base: Jandy's `allbutton.yaml` flips `sniffer_only: false`, adds `command_format` + `tx`, and
-extends the uart (`uart: [{ id: !extend pool_uart, flow_control_pin: ${flow_control_pin} }]`) to add
-the direction pin the passive base omits.
+extends the base. The device config's `uart:` block owns all pin config including the optional
+`flow_control_pin`; the passive and active example device configs both show this.
 
 ## 6a. Keep the example menu complete (obligation)
 

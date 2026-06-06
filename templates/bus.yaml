@@ -19,25 +19,16 @@
 # panel-wide entities. Equipment profiles add to it via `id: !extend <hub_id>`.
 # See CONTRIBUTING.md for the rules.
 #
-# Required substitutions the DEVICE config must define: name, friendly_name, board,
-# tx_pin, rx_pin, flow_control_pin (+ any list-valued substitution like a command
-# preamble — those MUST be defined only in the device file, never defaulted here,
-# because list substitutions concatenate when set in two places).
+# The device config's substitutions: block contains everything the user fills in:
+# name, friendly_name, board, tx_pin, rx_pin, flow_control_pin, and any values
+# packages consume via ${...}. List-valued substitutions (e.g. command preamble)
+# MUST be defined only in the device file, never defaulted here, because they
+# concatenate when set in two places.
+# The uart: block belongs in the device config (id: <hub_id>_uart), not here.
 #
 # The `external_components:` block (github://b3nj1/esphome@rs485_frame) belongs in
 # the example-device.yaml, NOT here. Users cannot override a package's
 # external_components, and the block will be deleted once rs485_frame is upstream.
-
-uart:
-  - id: <hub_id>_uart
-    tx_pin: ${tx_pin}
-    rx_pin: ${rx_pin}
-    baud_rate: 19200          # TODO: your bus baud rate
-    data_bits: 8              # TODO
-    parity: NONE              # TODO: NONE | EVEN | ODD
-    stop_bits: 1              # TODO: 1 | 2
-    rx_buffer_size: 512
-    flow_control_pin: ${flow_control_pin}   # omit for a passive (sniffer_only) base
 
 rs485_frame:
   - id: <hub_id>             # entities reference this via rs485_frame_id: <hub_id>
