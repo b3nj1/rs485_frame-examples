@@ -13,7 +13,7 @@ esphome:
 # Sniffer mode never transmits, so framework choice is less critical here,
 # but ESP-IDF is recommended for consistency with the full config.
 esp32:
-  board: esp32-s3-devkitc-1    # replace with your variant
+  board: BOARDXX    # replace with your board identifier; see https://esphome.io/components/esp32
   framework:
     type: esp-idf
 
@@ -36,14 +36,14 @@ external_components:
 
 uart:
   id: pool_uart
-  tx_pin: GPIO17
-  rx_pin: GPIO18
+  tx_pin: GPIOXX
+  rx_pin: GPIOXX
   baud_rate: 19200
   data_bits: 8
   parity: NONE
   stop_bits: 2
   rx_buffer_size: 512
-  flow_control_pin: GPIO21    # omit if your adapter auto-manages direction
+  flow_control_pin: GPIOXX    # DE/RE direction pin; omit if your adapter auto-manages direction
 
 rs485_frame:
   id: pool

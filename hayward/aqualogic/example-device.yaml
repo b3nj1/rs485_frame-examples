@@ -11,7 +11,7 @@
 # HOW TO USE THIS FILE
 #   1. Copy it to your ESPHome configuration directory and rename it (the name
 #      becomes your device's hostname).
-#   2. Fill in the substitutions: below (board, GPIO pins, transmit role).
+#   2. Fill in all substitutions: below (name, board, GPIO pins, transmit role).
 #   3. In the packages.rs485.files list, uncomment the equipment profiles you have
 #      (pump-vsp.yaml, heater.yaml). The bus.yaml line is REQUIRED — leave it
 #      uncommented. LED and button entries are already active; rename labels to
@@ -29,10 +29,11 @@
 substitutions:
   name: aqualogic
   friendly_name: AquaLogic
-  board: esp32-s3-devkitc-1   # see https://esphome.io/components/esp32 for the full list
-  tx_pin: GPIO17
-  rx_pin: GPIO18
-  flow_control_pin: GPIO21
+  board: BOARDXX             # see https://esphome.io/components/esp32
+  tx_pin: GPIOXX             # if no data received, try swapping tx_pin and rx_pin
+  rx_pin: GPIOXX
+  flow_control_pin: GPIOXX   # DE/RE direction pin; delete this and the uart: line below
+                             # if your adapter auto-manages direction
   # Command format — all five knobs live here, not in bus.yaml, because ESPHome
   # concatenates list-valued substitutions from packages instead of overriding them.
   # Keeping them together avoids that footgun and makes the transmit role self-contained.
@@ -49,7 +50,7 @@ substitutions:
   cmd_size: "4"                      # Hayward: always 4-byte command
   cmd_endian: "big"                  # Hayward: big-endian
   cmd_repeat: "2"                    # wireless: 2 repeats; wired: 1
-  # Temperature units: set to °C / C if in Celsius region
+  # Temperature units — passed to bus.yaml decoders.
   temp_unit: "°F"
   temp_unit_short: "F"
 
@@ -80,10 +81,22 @@ external_components:
   - source: github://b3nj1/esphome@rs485_frame
     components: [rs485_frame]
 
+# UART — Hayward AquaLogic / ProLogic: 19200 baud, 8N2; fixed by protocol.
+uart:
+  id: pool_uart
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 19200  # Hayward AquaLogic — do not change
+  data_bits: 8
+  parity: NONE
+  stop_bits: 2
+  rx_buffer_size: 512
+  flow_control_pin: ${flow_control_pin}
+
 packages:
   rs485:
     url: https://github.com/b3nj1/rs485_frame-examples
-    ref: v1.0.0          # PINNED release tag — bump deliberately to update (see README)
+    ref: v1.0.1          # PINNED release tag — bump deliberately to update (see README)
     refresh: 1d
     files:
       # Bus package is REQUIRED and stays uncommented.

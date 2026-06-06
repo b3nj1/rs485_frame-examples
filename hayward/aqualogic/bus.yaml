@@ -20,7 +20,7 @@
 #
 # This is the shared RS485 hub for the Hayward AquaLogic / ProLogic family. It
 # is REQUIRED by every device config and owns everything the bus needs:
-#   - UART 19200 8N2
+#   - UART 19200 8N2 (configured in the device config's uart: block; id: pool_uart)
 #   - sum16_big_endian CRC, header-inclusive on TX
 #   - TX gated on the 0x01 0x01 keep-alive frame
 #   - command_format wrapping each button command with the role preamble
@@ -51,22 +51,6 @@
 substitutions:
   temp_unit: "°F"       # set to "°C" for Celsius regions
   temp_unit_short: "F"  # set to "C" for Celsius regions
-
-uart:
-  id: pool_uart
-  # If you receive no data, try swapping tx_pin and rx_pin. Some adapters
-  # label DI/RO from the adapter's perspective, opposite of the device's.
-  tx_pin: ${tx_pin}
-  rx_pin: ${rx_pin}
-  baud_rate: 19200
-  data_bits: 8
-  parity: NONE
-  stop_bits: 2
-  rx_buffer_size: 512
-  # Set flow_control_pin if your RS485 adapter has a DE/RE direction pin. With
-  # ESP-IDF this enables hardware half-duplex mode: the UART peripheral drives
-  # the pin automatically with shift-register-level timing.
-  flow_control_pin: ${flow_control_pin}
 
 rs485_frame:
   - id: pool

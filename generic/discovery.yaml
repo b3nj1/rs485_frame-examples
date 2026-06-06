@@ -28,7 +28,7 @@ esphome:
 # Required -- fill in your board identifier.
 # See https://esphome.io/components/esp32 for the full list.
 esp32:
-  board: esp32-s3-devkitc-1    # replace with your variant
+  board: BOARDXX    # replace with your board identifier; see https://esphome.io/components/esp32
   framework:
     type: esp-idf
 
@@ -59,9 +59,9 @@ external_components:
 # never transmits, so ESPHome simply holds this pin in the receive state.
 uart:
   id: bus_uart
-  tx_pin: GPIO17
-  rx_pin: GPIO18
-  flow_control_pin: GPIO21      # DE/RE direction pin; required to receive on most RS485 boards
+  tx_pin: GPIOXX
+  rx_pin: GPIOXX
+  flow_control_pin: GPIOXX      # DE/RE direction pin; omit if your adapter auto-manages direction
   baud_rate: 19200
   data_bits: 8
   parity: NONE

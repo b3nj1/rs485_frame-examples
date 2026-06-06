@@ -36,12 +36,6 @@
 # AllButton addresses are 0x08..0x0B. If yours differs, change BOTH the tx.gate
 # frame_type below and the [0x08, ...] frame addresses in leds-display.yaml.
 
-# Active emulation must drive the RS485 DE/RE direction pin. The passive base
-# (bus.yaml) leaves flow_control_pin unset; add it here by extending the uart.
-uart:
-  - id: !extend pool_uart
-    flow_control_pin: ${flow_control_pin}
-
 rs485_frame:
   - id: !extend pool
     sniffer_only: false        # override the passive base: this hub now transmits

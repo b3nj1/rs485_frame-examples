@@ -32,7 +32,7 @@ esphome:
   friendly_name: RS485 Generic
 
 esp32:
-  board: esp32-s3-devkitc-1    # replace with your variant
+  board: BOARDXX    # replace with your board identifier; see https://esphome.io/components/esp32
   framework:
     type: esp-idf
 
@@ -56,8 +56,8 @@ external_components:
 
 uart:
   id: bus_uart
-  tx_pin: GPIO17
-  rx_pin: GPIO18
+  tx_pin: GPIOXX
+  rx_pin: GPIOXX
   # Replace these with the actual settings of your target device. Common
   # values for industrial RS485 buses include 9600, 19200, 38400, 57600,
   # and 115200; 8N1 is the most common framing.
@@ -66,7 +66,7 @@ uart:
   parity: NONE
   stop_bits: 1
   rx_buffer_size: 512
-  flow_control_pin: GPIO21    # DE/RE direction pin on half-duplex adapters
+  flow_control_pin: GPIOXX    # DE/RE direction pin; omit if your adapter auto-manages direction
 
 rs485_frame:
   - id: bus

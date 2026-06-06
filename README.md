@@ -83,7 +83,7 @@ The device config pulls the package files from this repo at a **pinned release t
 packages:
   rs485:
     url: https://github.com/b3nj1/rs485_frame-examples
-    ref: v1.0.0          # pinned tag — bump deliberately to update
+    ref: v1.0.1          # pinned tag — bump deliberately to update
     refresh: 1d
     files:
       - hayward/aqualogic/bus.yaml          # required
