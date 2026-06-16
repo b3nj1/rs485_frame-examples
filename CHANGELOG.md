@@ -9,6 +9,48 @@ All notable changes to the published configuration interface are documented here
 - **MINOR** — additive: a new profile file, a new optional substitution *with a default*, a new entity.
 - **PATCH** — decoder or bug fix with no interface change.
 
+## [3.0.0] - unreleased
+
+### Changed
+
+- **`value:` replaces `command:` on buttons** (breaking). All button entities now use `value:`
+  instead of `command:`. Scalar or list form are both accepted: `value: 0x80000000` or
+  `value: [0x80000000, 0x80000000]`.
+
+- **`button_command` substitution is now a required list** (breaking). In
+  `hayward/aqualogic/button.yaml` includes, `button_command` must be a YAML list of one or two
+  hex values `[press, release]` — use the same value twice for a standard toggle. This replaces
+  the previous scalar form and the removed `command_repeat` feature. Bus captures show Hayward's
+  press and release halves can legitimately differ (e.g. simultaneous Left+Right press
+  `0x05000000` followed by a Left-only release `0x04000000`), which `command_repeat` could not
+  represent.
+
+- **`value_element_bytes:` replaces `command_size:` inside `command_format:`** (breaking). The
+  sub-key that specifies how many bytes each value element occupies on the wire is now
+  `value_element_bytes: 4`. Valid values are `1`, `2`, `3`, or `4`.
+
+- **`endian:` replaces `command_endian:` inside `command_format:`** (breaking). Shortened for
+  consistency now that the `command_` prefix is removed from the block's other sub-keys.
+
+- **`command_repeat:` removed from the `rs485_frame` component** (breaking for any config that
+  set it explicitly). Remove the key; the list-mode `value:` above replaces its purpose.
+
+- **New per-button `value_element_bytes:` override** (additive). A button may carry a top-level
+  `value_element_bytes:` key to override only the element byte width while inheriting the hub's
+  preamble, endian, and postamble. Mutually exclusive with a per-button `command_format:` block.
+
+### Migration from 2.0.0
+
+1. For each `button.yaml` include in your device config, change `button_command: 0x80000000` to
+   `button_command: [0x80000000, 0x80000000]` (or the distinct press/release pair, if applicable).
+2. For any inline `platform: rs485_frame` button entry, rename `command:` to `value:`.
+3. In any `command_format:` block (hub-level or per-button), rename `command_size:` to
+   `value_element_bytes:` and `command_endian:` to `endian:`.
+4. If you added `command_repeat:` yourself, remove it.
+5. Bump your package ref to `ref: v3.0.0`.
+
+---
+
 ## [2.0.0] - 2026-06-05
 
 ### Changed
@@ -72,5 +114,6 @@ Initial released interface. Restructured the monolithic per-controller YAMLs int
 - `generic/` discovery / sniffer / skeleton remain monolithic bootstrap tools (exempt from the
   package structure) with header notes pointing at it for real integrations.
 
+[3.0.0]: https://github.com/b3nj1/rs485_frame-examples/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/b3nj1/rs485_frame-examples/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/b3nj1/rs485_frame-examples/releases/tag/v1.0.0

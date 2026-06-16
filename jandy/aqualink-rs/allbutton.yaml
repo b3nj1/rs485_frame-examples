@@ -42,7 +42,7 @@ rs485_frame:
     # AllButton ACK: preamble [0x00, 0x01, 0x80] + 1-byte command. 0x80 is a guess.
     command_format:
       preamble: [0x00, 0x01, 0x80]
-      command_size: 1
+      value_element_bytes: 1
     tx:
       gate:
         mode: frame_trigger
@@ -60,52 +60,52 @@ button:
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Filter Pump"
-    command: 0x00000002   # key byte = 0x02
+    value: 0x00000002   # key byte = 0x02
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Spa"
-    command: 0x00000001
+    value: 0x00000001
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Aux 1"
-    command: 0x00000005
+    value: 0x00000005
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Aux 2"
-    command: 0x0000000a
+    value: 0x0000000a
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Aux 3"
-    command: 0x0000000f
+    value: 0x0000000f
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Aux 4"
-    command: 0x00000006   # use 0x14 for RS12/RS16 systems
+    value: 0x00000006   # use 0x14 for RS12/RS16 systems
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Pool Heater"
-    command: 0x00000012
+    value: 0x00000012
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Spa Heater"
-    command: 0x00000017
+    value: 0x00000017
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Hold"
-    command: 0x00000019
+    value: 0x00000019
 
   - platform: rs485_frame
     rs485_frame_id: pool
     name: "Override"
-    command: 0x0000001e
+    value: 0x0000001e
 
 sensor:
   - platform: rs485_frame
