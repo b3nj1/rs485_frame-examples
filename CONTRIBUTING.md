@@ -108,9 +108,9 @@ transmit-role command preamble,
 temperature units) are documented in that family's `bus.yaml` header. **Scalar substitutions**
 follow last-write-wins, so defaults for purely scalar knobs (e.g. `temp_unit`) live in `bus.yaml`
 and are overridden in the device config. **Exception: keep logically related knobs together.** All
-five `command_format` knobs (`cmd_preamble`, `cmd_postamble`, `cmd_size`, `cmd_endian`,
-`cmd_repeat`) live in the device config — none are defaulted in `bus.yaml` — so the transmit role
-is fully self-contained in one place and contributors cannot accidentally split it.
+four `command_format` knobs (`cmd_preamble`, `cmd_postamble`, `cmd_element_bytes`, `cmd_endian`) live in the
+device config — none are defaulted in `bus.yaml` — so the transmit role is fully self-contained in
+one place and contributors cannot accidentally split it.
 
 **Two substitution gotchas, both verified with `esphome config`:**
 
@@ -139,7 +139,7 @@ lists the ones it has:
 files:
   - hayward/aqualogic/bus.yaml
   - path: hayward/aqualogic/button.yaml
-    vars: { button_name: "AUX 1", button_command: "0x00020000" }
+    vars: { button_name: "AUX 1", button_command: [0x00020000, 0x00020000] }
   - path: hayward/aqualogic/led.yaml
     vars: { bit: 7, led_name: "AUX 1", device_class: running, disabled_by_default: "true" }
 ```

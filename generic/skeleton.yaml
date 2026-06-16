@@ -22,9 +22,9 @@
 ##
 ## All transmissions go through the raw `frame_type:` + `payload:` form on
 ## buttons, or the `rs485_frame.send_frame` action when bytes are computed at
-## runtime. No command_format is configured below, so the `command:` shorthand
+## runtime. No command_format is configured below, so the `value:` shorthand
 ## on buttons is unavailable — add a `command_format:` block to the hub if your
-## device has a regular structure (preamble + command bytes + postamble) and you
+## device has a regular structure (preamble + value bytes + postamble) and you
 ## want that shorthand.
 
 esphome:
@@ -78,10 +78,10 @@ rs485_frame:
     framing:
       escape:
         mode: double              # ⮕ or: mode: escape_byte + byte: 0xNN — verify from captures
-    # No command_format set: the `command:` form on the button platform is rejected,
+    # No command_format set: the `value:` form on the button platform is rejected,
     # forcing all transmissions through raw frame_type+payload. Add command_format:
-    # here if your device has a regular structure (preamble + command bytes + postamble)
-    # and you want to use the `command:` shorthand on buttons.
+    # here if your device has a regular structure (preamble + value bytes + postamble)
+    # and you want to use the `value:` shorthand on buttons.
     dump_frames: true             # ⮕ logs every validated RX frame; turn off in production
     crc:
       type: crc16_modbus          # ⮕ replace with your device's CRC

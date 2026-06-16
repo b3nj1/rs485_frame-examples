@@ -45,12 +45,12 @@ rs485_frame:
         frame_type: [0x00, 0x00]   # TODO: the keep-alive frame your bus gates writes on
       queue_policy: replace_latest
       max_queue_size: 1
-    # command_format is required by the `command:` button shorthand and by
+    # command_format is required by the `value:` button shorthand and by
     # tx.idle_command. Omit it (and use raw frame_type+payload buttons) if your bus
-    # has no regular preamble/command/postamble structure.
+    # has no regular preamble/value/postamble structure.
     command_format:
       preamble: ${cmd_preamble}   # define this list in the DEVICE config
-      command_size: 1             # TODO
+      value_element_bytes: 1      # TODO
     dump_frames: false
 
     # Panel-wide on_frame decoders go here (per-equipment decoders go in profiles).

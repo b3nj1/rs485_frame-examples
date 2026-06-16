@@ -5,7 +5,7 @@
 # Tested on:   Hayward AquaLogic / ProLogic; ESP32-S3; ESPHome 2026.6.0-dev;
 #              rs485_frame @ github://b3nj1/esphome@rs485_frame
 # Bus:         19200 baud, 8N2
-# Owns frames: gate [0x01,0x01]; command frames per command_format (wireless
+# Owns frames: gate [0x01,0x01]; value frames per command_format (wireless
 #              [0x00,0x83,0x01] by default); decodes panel LEDs [0x01,0x02] and
 #              the display [0x01,0x03]
 # Offsets:     payload-relative — payload[0..1] = frame_type, data starts at payload[2]
@@ -23,8 +23,8 @@
 #   - UART 19200 8N2 (configured in the device config's uart: block; id: pool_uart)
 #   - sum16_big_endian CRC, header-inclusive on TX
 #   - TX gated on the 0x01 0x01 keep-alive frame
-#   - command_format wrapping each button command with the role preamble
-#     (${cmd_preamble}) + ${cmd_size}-byte command × ${cmd_repeat} + ${cmd_postamble}
+#   - command_format wrapping each button value with the role preamble
+#     (${cmd_preamble}) + ${cmd_element_bytes}-byte value(s) + ${cmd_postamble}
 #   - panel-wide entities: nav/mode buttons, display text, and the panel LEDs
 #
 # Equipment profiles (pump-vsp.yaml, heater.yaml) and per-button/per-LED templates
@@ -46,8 +46,9 @@
 # ESPHome merges substitutions from packages by concatenating list values rather than
 # overriding them. A list-valued default here would double up with the device config's
 # value (e.g. [0x00, 0x83, 0x01] + [0x00, 0x83, 0x01] = 6 bytes, not 3). To keep all
-# command_format knobs in one place and avoid that footgun, ALL five are defined only in
-# the device config — none have defaults here.
+# command_format knobs in one place and avoid that footgun, ALL four are defined only in
+# the device config — none have defaults here (cmd_preamble, cmd_postamble,
+# cmd_element_bytes, cmd_endian).
 substitutions:
   temp_unit: "°F"       # set to "°C" for Celsius regions
   temp_unit_short: "F"  # set to "C" for Celsius regions
@@ -72,9 +73,8 @@ rs485_frame:
 
     command_format:
       preamble: ${cmd_preamble}
-      command_size: ${cmd_size}
-      command_endian: ${cmd_endian}
-      command_repeat: ${cmd_repeat}
+      value_element_bytes: ${cmd_element_bytes}
+      endian: ${cmd_endian}
       postamble: ${cmd_postamble}
 
     dump_frames: false

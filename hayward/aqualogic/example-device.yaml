@@ -34,7 +34,7 @@ substitutions:
   rx_pin: GPIOXX
   flow_control_pin: GPIOXX   # DE/RE direction pin; delete this and the uart: line below
                              # if your adapter auto-manages direction
-  # Command format — all five knobs live here, not in bus.yaml, because ESPHome
+  # Command format — all four knobs live here, not in bus.yaml, because ESPHome
   # concatenates list-valued substitutions from packages instead of overriding them.
   # Keeping them together avoids that footgun and makes the transmit role self-contained.
   #
@@ -47,9 +47,8 @@ substitutions:
   #     cmd_preamble: [0x00, 0x02]          cmd_postamble: []
   cmd_preamble: [0x00, 0x83, 0x01]   # unquoted YAML list — wireless default
   cmd_postamble: [0x00]              # wireless trailing pad; wired uses []
-  cmd_size: "4"                      # Hayward: always 4-byte command
+  cmd_element_bytes: "4"             # Hayward: always 4 bytes per value
   cmd_endian: "big"                  # Hayward: big-endian
-  cmd_repeat: "2"                    # wireless: 2 repeats; wired: 1
   # Temperature units — passed to bus.yaml decoders.
   temp_unit: "°F"
   temp_unit_short: "F"
@@ -96,7 +95,7 @@ uart:
 packages:
   rs485:
     url: https://github.com/b3nj1/rs485_frame-examples
-    ref: v2.0.0          # PINNED release tag — bump deliberately to update (see README)
+    ref: v3.0.0          # PINNED release tag — bump deliberately to update (see README)
     refresh: 1d
     files:
       # Bus package is REQUIRED and stays uncommented.
@@ -168,71 +167,83 @@ packages:
       # --- Buttons — rename labels to match your load; remove buttons your panel lacks. ---
       # Navigation and mode: active by default on every panel.
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Filter", button_command: "0x80000000" }
+        vars: { button_name: "Filter", button_command: [0x80000000, 0x80000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Pool Spa Mode", button_command: "0x40000000" }
+        vars: { button_name: "Pool Spa Mode", button_command: [0x40000000, 0x40000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Plus", button_command: "0x20000000" }
+        vars: { button_name: "Plus", button_command: [0x20000000, 0x20000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Minus", button_command: "0x10000000" }
+        vars: { button_name: "Minus", button_command: [0x10000000, 0x10000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Menu", button_command: "0x02000000" }
+        vars: { button_name: "Menu", button_command: [0x02000000, 0x02000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Right", button_command: "0x01000000" }
+        vars: { button_name: "Right", button_command: [0x01000000, 0x01000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Left", button_command: "0x04000000" }
+        vars: { button_name: "Left", button_command: [0x04000000, 0x04000000] }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Lights", button_command: "0x00010000" }
+        vars: { button_name: "Lights", button_command: [0x00010000, 0x00010000] }
+      # Menu Unlock — Hayward unlocks setup menus by holding Left+Right for several seconds,
+      # not a quick press. Two buttons bracket the hold instead of one: "Start" sets the
+      # Left+Right bits with nothing released (held), "End" releases them. Press Start, wait
+      # a few seconds, then press End.
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "Menu Unlock Start", button_command: [0x05000000, 0x00000000] }
+      # - path: hayward/aqualogic/button.yaml
+      #   vars: { button_name: "Menu Unlock End", button_command: [0x00000000, 0x05000000] }
       # Service — wired local frame (0x0002), no postamble. Disabled by default:
       # maintenance use only; most users should not trigger this accidentally.
       - path: hayward/aqualogic/button.yaml
         vars:
           button_name: "Service"
-          button_command: "0x08000000"
+          button_command: [0x08000000, 0x08000000]
           disabled_by_default: "true"
           btn_preamble: [0x00, 0x02]   # wired local frame type — unquoted list
           btn_postamble: []
+          btn_element_bytes: "4"
+          btn_endian: "big"
       # System Off — always wireless regardless of hub role.
       - path: hayward/aqualogic/button.yaml
         vars:
           button_name: "System Off"
-          button_command: "0x08000000"
+          button_command: [0x08000000, 0x08000000]
           btn_preamble: [0x00, 0x83, 0x01]   # wireless — do not change
           btn_postamble: [0x00]
+          btn_element_bytes: "4"
+          btn_endian: "big"
       # AUX relays and valves — disabled by default; enable in HA Settings > Entities.
       # Rename labels to match your load (e.g. "Pool Light", "Spa Jets", "Booster Pump").
       # AUX 1-2 hardware-tested. AUX 3-7 confirmed by swilson + smith288, not hw-tested.
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 1", button_command: "0x00020000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 1", button_command: [0x00020000, 0x00020000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 2", button_command: "0x00040000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 2", button_command: [0x00040000, 0x00040000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 3", button_command: "0x00080000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 3", button_command: [0x00080000, 0x00080000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 4", button_command: "0x00100000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 4", button_command: [0x00100000, 0x00100000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 5", button_command: "0x00200000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 5", button_command: [0x00200000, 0x00200000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 6", button_command: "0x00400000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 6", button_command: [0x00400000, 0x00400000], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "AUX 7", button_command: "0x00800000", disabled_by_default: "true" }
+        vars: { button_name: "AUX 7", button_command: [0x00800000, 0x00800000], disabled_by_default: "true" }
       # AUX 8-14: command bytes are in an unusual byte position; swilson source only,
       # no independent wire-capture confirmation. Keep commented until hw-tested.
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 8",  button_command: "0x00000800", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 8",  button_command: [0x00000800, 0x00000800], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 9",  button_command: "0x00001000", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 9",  button_command: [0x00001000, 0x00001000], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 10", button_command: "0x00002000", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 10", button_command: [0x00002000, 0x00002000], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 11", button_command: "0x00004000", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 11", button_command: [0x00004000, 0x00004000], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 12", button_command: "0x00008000", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 12", button_command: [0x00008000, 0x00008000], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 13", button_command: "0x00000001", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 13", button_command: [0x00000001, 0x00000001], disabled_by_default: "true" }
       # - path: hayward/aqualogic/button.yaml
-      #   vars: { button_name: "AUX 14", button_command: "0x00000002", disabled_by_default: "true" }
+      #   vars: { button_name: "AUX 14", button_command: [0x00000002, 0x00000002], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Valve 3", button_command: "0x00000100", disabled_by_default: "true" }
+        vars: { button_name: "Valve 3", button_command: [0x00000100, 0x00000100], disabled_by_default: "true" }
       - path: hayward/aqualogic/button.yaml
-        vars: { button_name: "Valve 4", button_command: "0x00000200", disabled_by_default: "true" }
+        vars: { button_name: "Valve 4", button_command: [0x00000200, 0x00000200], disabled_by_default: "true" }
